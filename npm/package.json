@@ -23,6 +23,11 @@
   },
   "license": "Apache-2.0",
   "author": "Botwallet <support@botwallet.co>",
+  "files": [
+    "bin/",
+    "scripts/",
+    "README.md"
+  ],
   "bin": {
     "botwallet": "./bin/botwallet"
   },
