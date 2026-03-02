@@ -1,0 +1,55 @@
+{
+  "name": "@botwallet/agent-cli",
+  "version": "0.1.0-beta.1",
+  "description": "CLI for AI agents to manage their Botwallet accounts",
+  "keywords": [
+    "botwallet",
+    "ai",
+    "agent",
+    "cli",
+    "payments",
+    "wallet",
+    "cryptocurrency",
+    "solana",
+    "usdc"
+  ],
+  "homepage": "https://botwallet.co",
+  "bugs": {
+    "url": "https://github.com/botwallet-co/agent-cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/botwallet-co/agent-cli.git"
+  },
+  "license": "Apache-2.0",
+  "author": "Botwallet <support@botwallet.co>",
+  "bin": {
+    "botwallet": "./bin/botwallet"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
+
+
+
+
+
+
+
+

@@ -1,0 +1,40 @@
+# Binaries
+botwallet
+botwallet.exe
+*.exe
+!*.exe.manifest
+
+# Build output
+dist/
+npm/bin/botwallet
+npm/bin/botwallet.exe
+npm/tmp/
+
+# Dependencies
+vendor/
+npm/node_modules/
+
+# Environment
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.seed
+*.secret
+*.mnemonic
+*.key
+*.pem
+
+# Test
+coverage/

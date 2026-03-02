@@ -1,0 +1,177 @@
+# =============================================================================
+# GoReleaser Configuration for Botwallet CLI
+# =============================================================================
+# Automated releases to GitHub, Homebrew, npm, and more.
+# Run: goreleaser release --clean
+# =============================================================================
+
+version: 2
+
+project_name: botwallet
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: botwallet
+    main: ./main.go
+    binary: botwallet
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    flags:
+      - -trimpath
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+
+# =============================================================================
+# Homebrew Tap
+# =============================================================================
+brews:
+  - name: botwallet
+    repository:
+      owner: botwallet-co
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://botwallet.co"
+    description: "CLI for AI agents to manage their Botwallet accounts"
+    license: "Apache-2.0"
+    commit_author:
+      name: Botwallet Bot
+      email: bot@botwallet.co
+    test: |
+      system "#{bin}/botwallet", "version"
+    install: |
+      bin.install "botwallet"
+
+# =============================================================================
+# npm Package (via pkg)
+# =============================================================================
+# Note: npm publishing requires a separate npm package wrapper.
+# The binaries are made available via GitHub releases for npm postinstall scripts.
+
+# =============================================================================
+# Scoop (Windows Package Manager)
+# =============================================================================
+scoops:
+  - name: botwallet
+    repository:
+      owner: botwallet-co
+      name: scoop-bucket
+      token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
+    homepage: "https://botwallet.co"
+    description: "CLI for AI agents to manage their Botwallet accounts"
+    license: Apache-2.0
+
+# =============================================================================
+# GitHub Release
+# =============================================================================
+release:
+  github:
+    owner: botwallet-co
+    name: agent-cli
+  mode: replace
+  draft: false
+  prerelease: auto
+  name_template: "Botwallet CLI v{{.Version}}"
+  header: |
+    ## Botwallet CLI v{{.Version}}
+    
+    Payment infrastructure for AI agents.
+    
+    ### Installation
+    
+    **Homebrew (macOS/Linux):**
+    ```bash
+    brew install botwallet-co/tap/botwallet
+    ```
+    
+    **npm (all platforms):**
+    ```bash
+    npm install -g @botwallet/agent-cli
+    ```
+    
+    **Scoop (Windows):**
+    ```powershell
+    scoop bucket add botwallet https://github.com/botwallet-co/scoop-bucket
+    scoop install botwallet
+    ```
+    
+    **Direct Download:**
+    Download the appropriate binary for your platform below.
+    
+    ### Quick Start
+    
+    ```bash
+    # Create a wallet
+    botwallet wallet create --name "Orion's Wallet" --owner human@example.com
+    
+    # Check balance
+    botwallet balance
+    
+    # Make a payment
+    botwallet pay merchant-name 10.00
+    ```
+    
+  footer: |
+    
+    ---
+    
+    **Full Documentation:** https://botwallet.co/docs/cli
+    
+    **Support:** https://botwallet.co/support
+
+# =============================================================================
+# Announce (Optional)
+# =============================================================================
+# announce:
+#   twitter:
+#     enabled: true
+#     message_template: '🤖 Botwallet CLI v{{.Version}} is out! Payment infrastructure for AI agents. Download: https://github.com/botwallet-co/agent-cli/releases/tag/v{{.Version}}'
+
+
+
+
+
+
+
+
