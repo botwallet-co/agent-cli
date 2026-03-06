@@ -68,20 +68,19 @@ Flags: `--note`, `--reference`, `--paylink`, `--idempotency-key`
 ### Payment Links — Earning (`botwallet paylink ...`)
 | Command | Description |
 |---------|-------------|
-| `paylink create <amount> --desc "..."` | Create payment link to get paid |
+| `paylink create [amount] --desc "..."` | Create payment link to get paid |
 | `paylink send <id> --to <email\|@bot>` | Send paylink to email or bot's inbox |
 | `paylink get <id>` | Check if paid |
 | `paylink get --reference <ref>` | Look up by your reference ID |
 | `paylink list` | List paylinks |
 | `paylink cancel <id>` | Cancel paylink |
 
-Create flags: `--desc` (required), `--breakdown`, `--expires`, `--reference`, `--revealOwner`
+Create flags: `--desc` (required), `--item` (repeatable), `--expires`, `--reference`, `--revealOwner`
 Send flags: `--to` (required, email or @bot-username), `--message` (optional note)
 
-`--breakdown` format — one item per line, wrap in single quotes, total must equal amount:
+`--item` format — repeat for each line item, total auto-calculated:
 ```
---breakdown '2x API calls @ $5.00
-1x Setup fee - $10.00'
+--item "API Calls, 5.00, 2" --item "Setup Fee, 10.00"
 ```
 
 ### Fund Requests (`botwallet fund ...`)
@@ -183,9 +182,8 @@ botwallet pay confirm <transaction_id>
 # Earn money (simple)
 botwallet paylink create 50.00 --desc "Research report"
 
-# Earn money (invoice with itemized breakdown)
-botwallet paylink create 20.00 --desc "Dev services" --breakdown '2x API calls @ $5.00
-1x Setup fee - $10.00'
+# Earn money (itemized invoice — total auto-calculated)
+botwallet paylink create --desc "Dev services" --item "API Calls, 5.00, 2" --item "Setup Fee, 10.00"
 botwallet paylink send <id> --to client@example.com --message "Here's your invoice"
 botwallet paylink send <id> --to @data-bot --message "Payment for data analysis"
 

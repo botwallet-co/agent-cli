@@ -26,7 +26,7 @@ How it works:
   4. You receive the funds when paid
 
 Optional Features:
-  • Invoice breakdown: Add itemized line items with --breakdown
+  • Itemized invoice: Add line items with --item (repeatable)
   • Owner privacy: Hide your email with --revealOwner=false
 
 Subcommands:
@@ -44,9 +44,8 @@ Subcommands:
   # Or email it to a human
   botwallet paylink send <request_id> --to client@example.com
   
-  # With invoice breakdown
-  botwallet paylink create 20.00 --desc "Services" --breakdown '2x API @ $5.00
-  1x Setup @ $10.00'
+  # With itemized invoice (total auto-calculated)
+  botwallet paylink create --desc "Services" --item "API Calls, 5.00, 2" --item "Setup Fee, 10.00"
   
   # Check status
   botwallet paylink get pl_abc123`,
@@ -57,11 +56,11 @@ var (
 	paylinkCreateReference   string
 	paylinkCreateExpiresIn   string
 	paylinkCreateRevealOwner bool
-	paylinkCreateBreakdown   string
+	paylinkCreateItems       []string
 )
 
 var paylinkCreateCmd = &cobra.Command{
-	Use:   "create <amount>",
+	Use:   "create [amount]",
 	Short: "Create a payment link to receive money",
 	Long: `Create a payment link so others can pay you.
 
@@ -72,46 +71,48 @@ The payment URL can be shared with:
   • Other agents (they pay via: botwallet pay --paylink <id>)
   • Humans (they pay via the web interface)
 
-INVOICE BREAKDOWN (optional --breakdown flag):
-  Add --breakdown to include an itemized invoice. Each line is one item.
-  Items must add up to the total amount.
+ITEMIZED INVOICE (optional --item flag, repeatable):
+  Add --item for each line item. The total is calculated automatically.
 
-  FORMAT (pick one per line):
-    "2x Item Name @ $5.00"      ← quantity × unit price
-    "Item Name - $10.00"        ← flat price, quantity = 1
+  FORMAT:  --item "description, price[, quantity]"
 
-  RULES:
-    • Wrap the whole breakdown in single quotes
-    • One item per line (newline-separated)
-    • Prices use $ and decimals: $5.00, $10.00
-    • Total of all items must equal the <amount> argument`,
-	Example: `  # Simple paylink (no breakdown)
+  • Price: use numbers like 5.00 or 5 (no $ sign needed)
+  • Quantity is optional (defaults to 1)
+  • Descriptions with commas are fine
+
+  When using --item, the amount argument is optional — the CLI
+  calculates the total from your items.`,
+	Example: `  # Simple paylink
   botwallet paylink create 10.00 --desc "Research report"
 
-  # Invoice with itemized breakdown ($10 + $10 = $20)
-  botwallet paylink create 20.00 --desc "Dev services" --breakdown '2x API calls @ $5.00
-  1x Setup fee - $10.00'
+  # Itemized invoice (total auto-calculated: $20)
+  botwallet paylink create --desc "Dev services" --item "API Calls, 5.00, 2" --item "Setup Fee, 10.00"
 
   # Email it as an invoice after creating
   botwallet paylink send <request_id> --to client@example.com --message "Invoice attached"
 
   # With reference ID and expiry
   botwallet paylink create 50.00 --desc "Consulting" --reference "INV-001" --expires "7d"`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.RangeArgs(0, 1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if !requireAPIKey() {
 			return
 		}
 
-		amount, err := strconv.ParseFloat(args[0], 64)
-		if err != nil {
-			output.ValidationError("Invalid amount: "+args[0], "Amount should be a number, e.g., 10.00")
-			return
-		}
+		var amount float64
+		hasAmount := len(args) > 0
 
-		if amount <= 0 {
-			output.ValidationError("Amount must be greater than 0", "Provide a positive number")
-			return
+		if hasAmount {
+			var err error
+			amount, err = strconv.ParseFloat(args[0], 64)
+			if err != nil {
+				output.ValidationError("Invalid amount: "+args[0], "Amount should be a number, e.g., 10.00")
+				return
+			}
+			if amount <= 0 {
+				output.ValidationError("Amount must be greater than 0", "Provide a positive number")
+				return
+			}
 		}
 
 		if paylinkCreateDesc == "" {
@@ -119,17 +120,14 @@ INVOICE BREAKDOWN (optional --breakdown flag):
 			return
 		}
 
-		// Parse and validate breakdown if provided
 		var lineItems []api.LineItem
-		if paylinkCreateBreakdown != "" {
-			items, breakdownTotal, err := ParseBreakdown(paylinkCreateBreakdown)
+		if len(paylinkCreateItems) > 0 {
+			items, itemTotal, err := ParseItems(paylinkCreateItems)
 			if err != nil {
-				output.ValidationError("Invalid breakdown format", err.Error())
-				fmt.Println("\n" + FormatBreakdownExamples())
+				output.ValidationError("Invalid --item", err.Error())
 				return
 			}
 
-			// Convert to api.LineItem type
 			for _, item := range items {
 				lineItems = append(lineItems, api.LineItem{
 					Description:    item.Description,
@@ -139,25 +137,31 @@ INVOICE BREAKDOWN (optional --breakdown flag):
 				})
 			}
 
-			// Validate breakdown total matches payment amount
-			if !floatsEqual(breakdownTotal, amount) {
-				diff := amount - breakdownTotal
-				var advice string
-				if diff > 0 {
-					advice = fmt.Sprintf("Add $%.2f more to your breakdown, or reduce payment to $%.2f", diff, breakdownTotal)
-				} else {
-					advice = fmt.Sprintf("Remove $%.2f from your breakdown, or increase payment to $%.2f", -diff, breakdownTotal)
-				}
+			if hasAmount && !floatsEqual(itemTotal, amount) {
+				diff := amount - itemTotal
 				output.ValidationError(
-					"Breakdown total doesn't match payment amount",
-					fmt.Sprintf("Breakdown:  $%.2f\nPayment:    $%.2f\nDifference: $%.2f\n\n%s", breakdownTotal, amount, diff, advice),
+					"Amount doesn't match item total",
+					fmt.Sprintf("Amount:     $%.2f\nItem total: $%.2f\nDifference: $%.2f\n\nEither remove the amount argument (let items set the total)\nor fix your --item values to match.",
+						amount, itemTotal, diff),
 				)
 				return
 			}
 
+			amount = itemTotal
+
 			if output.IsHumanOutput() {
-				fmt.Printf("\n✓ Breakdown validated: %d items, total $%.2f\n\n", len(lineItems), breakdownTotal)
+				noun := "items"
+				if len(lineItems) == 1 {
+					noun = "item"
+				}
+				fmt.Printf("\n✓ %d %s, total $%.2f\n\n", len(lineItems), noun, amount)
 			}
+		} else if !hasAmount {
+			output.ValidationError(
+				"Amount is required",
+				"Provide an amount or use --item flags:\n  botwallet paylink create 10.00 --desc \"Service\"\n  botwallet paylink create --desc \"Service\" --item \"Item, 10.00\"",
+			)
+			return
 		}
 
 		client := getClient()
@@ -177,7 +181,7 @@ func init() {
 	paylinkCreateCmd.Flags().StringVar(&paylinkCreateReference, "reference", "", "Your internal reference ID")
 	paylinkCreateCmd.Flags().StringVar(&paylinkCreateExpiresIn, "expires", "24h", "Expiration time: 1h, 24h, 7d")
 	paylinkCreateCmd.Flags().BoolVar(&paylinkCreateRevealOwner, "revealOwner", true, "Show owner email on payment page (default: true)")
-	paylinkCreateCmd.Flags().StringVar(&paylinkCreateBreakdown, "breakdown", "", "Invoice breakdown: '2x Item @ $5.00' (one per line, use single quotes)")
+	paylinkCreateCmd.Flags().StringArrayVar(&paylinkCreateItems, "item", nil, "Line item: \"description, price[, qty]\" (repeatable)")
 }
 
 var paylinkGetReference string
@@ -309,7 +313,7 @@ Use this to track your earnings and outstanding payment links.`,
 
 		if len(paylinks) == 0 {
 			output.InfoMsg("No payment links found.")
-			output.Tip("Create one with: botwallet paylink create <amount> --desc \"...\"")
+			output.Tip("Create one with: botwallet paylink create [amount] --desc \"...\"")
 			return
 		}
 

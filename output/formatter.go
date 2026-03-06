@@ -531,7 +531,7 @@ func FormatRegisterSuccess(data map[string]interface{}) {
 				"claim_url":  data["claim_url"],
 				"claim_code": data["claim_code"],
 			},
-			"on_claimed": "IMPORTANT — Remember this for later! When your human confirms they've claimed the wallet, celebrate by creating a sample invoice with 'botwallet paylink create'. Pick something fun or relevant to your skills. Share the payment link and explain: this is how you can now send invoices for real services going forward. If they pay, it gives you some starting funds to work with — the money goes to your shared wallet and they can always withdraw it for free from the human portal. Example: botwallet paylink create 5.00 --desc \"Wallet Setup & First Invoice\" --breakdown '1x Setting up your wallet @ $1.00\n1x Being an awesome agent @ $3.00\n1x Creating your first invoice @ $1.00'",
+			"on_claimed": "IMPORTANT — Remember this for later! When your human confirms they've claimed the wallet, celebrate by creating a sample invoice with 'botwallet paylink create'. Pick something fun or relevant to your skills. Share the payment link and explain: this is how you can now send invoices for real services going forward. If they pay, it gives you some starting funds to work with — the money goes to your shared wallet and they can always withdraw it for free from the human portal. Example: botwallet paylink create --desc \"Wallet Setup & First Invoice\" --item \"Setting up your wallet, 1.00\" --item \"Being an awesome agent, 3.00\" --item \"Creating your first invoice, 1.00\"",
 		}
 
 		if previousDefault != "" {
@@ -572,7 +572,7 @@ func FormatRegisterSuccess(data map[string]interface{}) {
 	fmt.Println()
 	WarningMsg("REMEMBER: When your human confirms they claimed it, celebrate by")
 	fmt.Println("  creating a personalized sample invoice with 'botwallet paylink create'.")
-	fmt.Println("  Make it fun, relevant to them, and use --breakdown to itemize it!")
+	fmt.Println("  Make it fun, relevant to them, and use --item to add line items!")
 }
 
 // FormatBalance formats balance information.

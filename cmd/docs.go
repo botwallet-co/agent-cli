@@ -54,19 +54,19 @@ Only wallet info and wallet owner work before claiming.
     Flags: --note, --reference, --paylink, --idempotency-key
 
 ### Payment Links — Earning (botwallet paylink ...)
-    paylink create <amount> --desc "..."       Create a payment link to get paid
+    paylink create [amount] --desc "..."       Create a payment link to get paid
     paylink send <id> --to <email|@bot>        Send paylink to email or bot's inbox
     paylink get <id>                           Check if paylink has been paid
     paylink get --reference <ref>              Look up by your reference ID
     paylink list                               List all your paylinks
     paylink cancel <id>                        Cancel a pending paylink
 
-    Create flags: --desc (required), --breakdown, --expires, --revealOwner, --reference
+    Create flags: --desc (required), --item (repeatable), --expires, --revealOwner, --reference
     Send flags: --to (required), --message (optional personal note)
 
-    --breakdown format (one item per line, wrap in single quotes, total must equal amount):
-      '2x API calls @ $5.00
-      1x Setup fee - $10.00'
+    --item format (repeat for each line item, total auto-calculated):
+      --item "API Calls, 5.00, 2"    ← description, price, quantity
+      --item "Setup Fee, 10.00"      ← description, price (quantity defaults to 1)
 
 ### x402 Paid APIs (botwallet x402 ...) — Two-Step Flow
     x402 discover                              List verified Solana APIs (curated catalog)
@@ -135,7 +135,7 @@ Only wallet info and wallet owner work before claiming.
     # Output includes claim_url, claim_code, and on_claimed instructions.
     # Share the claim details with your human so they can activate the wallet.
     # When they confirm claiming, create a sample invoice to demo your abilities:
-    botwallet paylink create 5.00 --desc "Wallet Setup & First Invoice"
+    botwallet paylink create --desc "Wallet Setup & First Invoice" --item "Getting started, 5.00"
 
 ### Pay Someone
     botwallet pay preview @merchant 10.00           # Optional: pre-check
@@ -153,9 +153,8 @@ Only wallet info and wallet owner work before claiming.
     botwallet paylink send <id> --to @other-bot          # Send to bot's inbox
     botwallet paylink get <id>                            # Check if paid
 
-### Earn Money (invoice with breakdown)
-    botwallet paylink create 20.00 --desc "Dev services" --breakdown '2x API calls @ $5.00
-    1x Setup fee - $10.00'
+### Earn Money (itemized invoice)
+    botwallet paylink create --desc "Dev services" --item "API Calls, 5.00, 2" --item "Setup Fee, 10.00"
     botwallet paylink send <id> --to client@example.com --message "Here's your invoice"
     botwallet paylink send <id> --to @data-bot --message "Payment for data analysis"
 
@@ -214,7 +213,7 @@ JSON by default. Use --human flag for formatted terminal output.
    persistent memory. Poll with 'approval status <id>' until resolved.
 4. After processing events, run 'events --mark-read' to stay clean
 5. Paylinks expire — monitor with 'paylink get'
-6. Use --breakdown for itemized invoices on paylinks
+6. Use --item flags for itemized invoices on paylinks
 7. Use 'paylink send' to deliver a paylink to an email or bot (--to @bot-name)
 
 
@@ -410,13 +409,13 @@ func getDocsJSON() map[string]interface{} {
 				"name":        "paylink",
 				"description": "Payment links (earning) - create shareable payment URLs to get paid by anyone",
 				"commands": []map[string]interface{}{
-					{
-						"name":             "create",
-						"description":      "Create a payment link to receive money",
-						"args":             []string{"amount"},
-						"flags":            []string{"--desc (required)", "--expires", "--breakdown", "--revealOwner"},
-						"example":          "botwallet paylink create 25.00 --desc \"Research report\"",
-						"breakdown_format": "Wrap in single quotes, one item per line. Format: '2x Item @ $5.00' or 'Item - $10.00'. Total of all items must equal the amount.",
+				{
+						"name":        "create",
+						"description": "Create a payment link to receive money",
+						"args":        []string{"amount (optional when using --item)"},
+						"flags":       []string{"--desc (required)", "--expires", "--item (repeatable: \"description, price[, qty]\")", "--revealOwner"},
+						"example":     "botwallet paylink create --desc \"Research report\" --item \"Research, 25.00\"",
+						"item_format": "Each --item is \"description, price[, quantity]\". Quantity defaults to 1. Total auto-calculated from items.",
 					},
 					{
 						"name":        "send",
@@ -612,12 +611,11 @@ func getDocsJSON() map[string]interface{} {
 				"botwallet paylink send <id> --to client@example.com  # to email",
 				"botwallet paylink get <id>",
 			},
-			"invoice_breakdown": {
-				"# Create paylink with itemized breakdown",
-				"botwallet paylink create 20.00 --desc \"Services\" --breakdown '2x API @ $5.00",
-				"1x Setup @ $10.00'",
-				"# Format: '2x Item @ $5.00' or 'Item - $10.00'",
-				"# Use single quotes, one item per line, total must match amount",
+			"itemized_invoice": {
+				"# Create paylink with itemized line items (total auto-calculated)",
+				"botwallet paylink create --desc \"Services\" --item \"API Calls, 5.00, 2\" --item \"Setup, 10.00\"",
+				"# Format: --item \"description, price[, quantity]\"",
+				"# Quantity defaults to 1. Repeat --item for each line item.",
 			},
 			"withdraw": {
 				"botwallet withdraw 50.00 7xKXtR9... --reason \"Pay hosting\"",
