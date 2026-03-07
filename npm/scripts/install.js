@@ -157,7 +157,35 @@ async function install() {
     fs.rmSync(tmpDir, { recursive: true });
     
     console.log('Botwallet CLI installed successfully!');
-    console.log('Run "botwallet --help" to get started.');
+
+    try {
+      const npmPrefix = execSync('npm prefix -g', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+      const isWindows = process.platform === 'win32';
+      const npmBinDir = isWindows ? npmPrefix : path.join(npmPrefix, 'bin');
+
+      const normalize = (p) => path.resolve(p).replace(/[\\/]+$/, '');
+      const caseSensitive = !isWindows;
+      const npmBinNorm = normalize(npmBinDir);
+
+      const pathDirs = (process.env.PATH || '').split(path.delimiter);
+      const inPath = pathDirs.some(d => {
+        const norm = normalize(d);
+        return caseSensitive ? norm === npmBinNorm : norm.toLowerCase() === npmBinNorm.toLowerCase();
+      });
+
+      if (!inPath) {
+        const fullCmd = isWindows ? path.join(npmBinDir, 'botwallet.cmd') : path.join(npmBinDir, 'botwallet');
+        console.log('');
+        console.log(`NOTE: npm global bin directory is not in your PATH.`);
+        console.log(`If "botwallet" is not recognized as a command, use the full path:`);
+        console.log(`  ${fullCmd}`);
+        console.log(`To fix permanently, add to your PATH: ${npmBinDir}`);
+      } else {
+        console.log('Run "botwallet --help" to get started.');
+      }
+    } catch {
+      console.log('Run "botwallet --help" to get started.');
+    }
     
   } catch (error) {
     console.error('Installation failed:', error.message);
