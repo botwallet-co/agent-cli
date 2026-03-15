@@ -204,8 +204,7 @@ func runWalletCreate(cmd *cobra.Command, args []string) {
 	if err != nil {
 		output.APIError("CONFIG_ERROR",
 			fmt.Sprintf("Failed to save wallet locally: %v", err),
-			"Re-run 'botwallet wallet create' to try again",
-			map[string]interface{}{"api_key": apiKey})
+			"Re-run 'botwallet wallet create' to try again", nil)
 		return
 	}
 
