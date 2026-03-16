@@ -669,6 +669,14 @@ Claim Code: %s
 Expires: %s`, claimURL, claimCode, claimCode, claimExpires))
 	}
 
+	// Show metadata if present
+	if meta := getMap(data, "metadata"); meta != nil && len(meta) > 0 {
+		Section("Metadata")
+		for k, v := range meta {
+			KeyValue(k, v)
+		}
+	}
+
 	if getBool(data, "low_balance") {
 		fmt.Println()
 		WarningMsg("Balance is low!")

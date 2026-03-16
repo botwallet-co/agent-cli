@@ -37,6 +37,7 @@ Only wallet info and wallet owner work before claiming.
     wallet use <name>                          Switch default wallet
     wallet deposit                             Get Solana USDC deposit address
     wallet owner <email>                       Change pledged owner (unclaimed only)
+    wallet rename <new-name>                   Rename display name (username stays the same)
     wallet backup                              Back up Key 1 (two-step safety process)
     wallet export -o <file.bwlt>               Export wallet to encrypted .bwlt file
     wallet import <file.bwlt>                  Import wallet from .bwlt file
@@ -133,6 +134,11 @@ Only wallet info and wallet owner work before claiming.
 ### Setup
     botwallet register --name "Orion's Wallet" --owner human@example.com
     # Output includes claim_url, claim_code, and on_claimed instructions.
+
+    # Optional: add metadata to help your human identify this wallet later
+    botwallet register --name "Orion's Wallet" --owner human@example.com \
+      --desc "Handles API calls for research" --meta platform=cursor --meta project=my-app
+    # Suggested --meta keys: platform, project, environment, hostname (any key works)
     # Share the claim details with your human so they can activate the wallet.
     # When they confirm claiming, create a sample invoice to demo your abilities:
     botwallet paylink create --desc "Wallet Setup & First Invoice" --item "Getting started, 5.00"
@@ -285,7 +291,7 @@ func getDocsJSON() map[string]interface{} {
 					{
 						"name":        "create",
 						"description": "Create a new wallet",
-						"flags":       []string{"--name (required)", "--owner (recommended)", "--model (optional)"},
+						"flags":       []string{"--name (required)", "--owner (recommended)", "--model (optional)", "--desc (optional, wallet purpose)", "--meta key=value (optional, repeatable)"},
 						"example":     "botwallet wallet create --name \"Research Wallet\" --owner human@example.com",
 					},
 					{
@@ -319,6 +325,12 @@ func getDocsJSON() map[string]interface{} {
 						"description": "Change pledged owner email (unclaimed wallets only)",
 						"args":        []string{"email"},
 						"example":     "botwallet wallet owner new@example.com",
+					},
+					{
+						"name":        "rename",
+						"description": "Rename wallet display name (username/slug is permanent)",
+						"args":        []string{"new-name"},
+						"example":     "botwallet wallet rename \"New Display Name\"",
 					},
 					{
 						"name":        "backup",
@@ -590,6 +602,7 @@ func getDocsJSON() map[string]interface{} {
 		"workflows": map[string][]string{
 			"first_time": {
 				"botwallet wallet create --name \"Orion's Wallet\" --owner human@example.com",
+				"# Optional: add --desc and --meta key=value to help your human identify this wallet",
 				"# Credentials auto-saved. Tell human to claim wallet.",
 				"# After claiming: botwallet wallet balance",
 			},

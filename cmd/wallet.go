@@ -30,6 +30,7 @@ Subcommands:
   use       Switch the default wallet
   deposit   Get your deposit address for receiving funds
   owner     Update the pledged owner email
+  rename    Rename your wallet's display name
   backup    Back up Key 1 (your 12 secret words)
   export    Export wallet to an encrypted .bwlt file
   import    Import wallet from a .bwlt file`,
@@ -40,6 +41,7 @@ Subcommands:
   botwallet wallet use my-other-wallet
   botwallet wallet deposit
   botwallet wallet owner new-owner@example.com
+  botwallet wallet rename "New Display Name"
   botwallet wallet backup
   botwallet wallet export -o wallet.bwlt
   botwallet wallet import wallet.bwlt`,
@@ -49,6 +51,8 @@ var (
 	walletCreateName       string
 	walletCreateAgentModel string
 	walletCreateOwner      string
+	walletCreateDesc       string
+	walletCreateMeta       []string
 )
 
 var walletCreateCmd = &cobra.Command{
@@ -119,7 +123,24 @@ func runWalletCreate(cmd *cobra.Command, args []string) {
 		output.InfoMsg("Setting up threshold signing...")
 	}
 
-	dkgResult, err := client.DKGInit(walletCreateName, walletCreateAgentModel, walletCreateOwner)
+	// Build optional metadata from --desc and --meta flags
+	walletMetadata := make(map[string]interface{})
+	if walletCreateDesc != "" {
+		walletMetadata["description"] = walletCreateDesc
+	}
+	for _, m := range walletCreateMeta {
+		parts := strings.SplitN(m, "=", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			output.ValidationError(
+				fmt.Sprintf("Invalid --meta format: %q", m),
+				"Use key=value format: --meta platform=cursor --meta project=my-app",
+			)
+			return
+		}
+		walletMetadata[parts[0]] = parts[1]
+	}
+
+	dkgResult, err := client.DKGInit(walletCreateName, walletCreateAgentModel, walletCreateOwner, walletMetadata)
 	if err != nil {
 		handleAPIError(err)
 		return
@@ -269,6 +290,8 @@ func init() {
 	walletCreateCmd.Flags().StringVarP(&walletCreateName, "name", "n", "", "Name for your wallet (required)")
 	walletCreateCmd.Flags().StringVarP(&walletCreateAgentModel, "model", "m", "", "Agent model (e.g., 'gpt-4', 'claude-3')")
 	walletCreateCmd.Flags().StringVar(&walletCreateOwner, "owner", "", "Owner's email (wallet appears in their portal)")
+	walletCreateCmd.Flags().StringVar(&walletCreateDesc, "desc", "", "Optional: describe this wallet's purpose (helps your human identify it)")
+	walletCreateCmd.Flags().StringArrayVar(&walletCreateMeta, "meta", nil, "Optional: key=value metadata (repeatable, e.g. --meta platform=cursor)")
 }
 
 var walletInfoCmd = &cobra.Command{
@@ -550,6 +573,63 @@ The new owner will see this wallet in their portal when they log in.`,
 			output.KeyValueURL("Claim URL", claimURL)
 		}
 		output.KeyValue("Claim Code", result["claim_code"])
+	},
+}
+
+var walletRenameCmd = &cobra.Command{
+	Use:   "rename <new-name>",
+	Short: "Rename your wallet's display name",
+	Long: `Change the display name of your wallet.
+
+This updates the human-readable name only. Your unique username (@slug)
+never changes — it's used in fund URLs, paylinks, and recipient lookup.
+
+Works for both claimed and unclaimed wallets.`,
+	Example: `  botwallet wallet rename "Research Budget"
+  botwallet wallet rename "Production API Wallet"`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		if !requireAPIKey() {
+			return
+		}
+
+		newName := strings.TrimSpace(args[0])
+		if len(newName) < 2 || len(newName) > 50 {
+			output.ValidationError(
+				"Name must be 2-50 characters",
+				"botwallet wallet rename \"My New Wallet Name\"",
+			)
+			return
+		}
+
+		client := getClient()
+
+		result, err := client.UpdateName(newName)
+		if err != nil {
+			handleAPIError(err)
+			return
+		}
+
+		// Server succeeded — update local config (best-effort)
+		_, localName, localErr := config.GetCurrentWallet(walletFlag)
+		if localErr == nil {
+			if cfgErr := config.UpdateWalletDisplayName(localName, newName); cfgErr != nil {
+				if output.IsHumanOutput() {
+					output.WarningMsg("Server updated, but local config update failed: %v", cfgErr)
+				}
+			}
+		}
+
+		if !output.IsHumanOutput() {
+			result["note"] = fmt.Sprintf("Display name updated. Your username @%s is unchanged.", result["username"])
+			output.JSON(result)
+			return
+		}
+
+		output.SuccessMsg("Wallet renamed!")
+		output.KeyValue("Name", result["name"])
+		output.KeyValue("Username", fmt.Sprintf("@%s (unchanged)", result["username"]))
+		output.Tip("Your username is permanent — it's used in fund URLs and payment links.")
 	},
 }
 
@@ -977,6 +1057,7 @@ func init() {
 	walletCmd.AddCommand(walletUseCmd)
 	walletCmd.AddCommand(walletDepositCmd)
 	walletCmd.AddCommand(walletOwnerCmd)
+	walletCmd.AddCommand(walletRenameCmd)
 	walletCmd.AddCommand(walletBackupCmd)
 	walletCmd.AddCommand(walletRevealBackupCmd)
 	walletCmd.AddCommand(walletExportCmd)

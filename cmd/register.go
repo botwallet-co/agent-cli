@@ -50,4 +50,6 @@ func init() {
 	registerCmd.Flags().StringVarP(&walletCreateName, "name", "n", "", "Name for your wallet (required)")
 	registerCmd.Flags().StringVarP(&walletCreateAgentModel, "model", "m", "", "Agent model (e.g., 'gpt-4', 'claude-3')")
 	registerCmd.Flags().StringVar(&walletCreateOwner, "owner", "", "Owner's email (wallet appears in their portal)")
+	registerCmd.Flags().StringVar(&walletCreateDesc, "desc", "", "Optional: describe this wallet's purpose (helps your human identify it)")
+	registerCmd.Flags().StringArrayVar(&walletCreateMeta, "meta", nil, "Optional: key=value metadata (repeatable, e.g. --meta platform=cursor)")
 }

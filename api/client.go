@@ -193,7 +193,7 @@ func (c *Client) Ping() (map[string]interface{}, error) {
 // DKGInit starts the FROST Distributed Key Generation protocol (no auth required).
 // Returns the server's public key share (A2) and a session ID.
 // SECURITY: No secret material is sent or received — only public points.
-func (c *Client) DKGInit(name string, agentModel string, ownerEmail string) (map[string]interface{}, error) {
+func (c *Client) DKGInit(name string, agentModel string, ownerEmail string, metadata map[string]interface{}) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"name": name,
 	}
@@ -202,6 +202,9 @@ func (c *Client) DKGInit(name string, agentModel string, ownerEmail string) (map
 	}
 	if ownerEmail != "" {
 		data["owner_email"] = ownerEmail
+	}
+	if len(metadata) > 0 {
+		data["metadata"] = metadata
 	}
 	return c.Call("dkg_init", data)
 }
@@ -215,6 +218,13 @@ func (c *Client) DKGComplete(sessionID string, botPublicShare string, groupPubli
 		"session_id":         sessionID,
 		"agent_public_share": botPublicShare,
 		"group_public_key":   groupPublicKey,
+	})
+}
+
+// UpdateName updates the wallet's display name (username/slug is immutable)
+func (c *Client) UpdateName(name string) (map[string]interface{}, error) {
+	return c.Call("update_name", map[string]interface{}{
+		"name": name,
 	})
 }
 

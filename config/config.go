@@ -308,6 +308,25 @@ func AddWalletWithInfo(localName, username, displayName, apiKey, publicKey, seed
 	return previousDefault, len(config.Wallets), nil
 }
 
+// UpdateWalletDisplayName updates only the display name of a wallet in the local config.
+// The map key (localName) and seed file path are never changed.
+func UpdateWalletDisplayName(localName, newDisplayName string) error {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	wallet, exists := cfg.Wallets[localName]
+	if !exists {
+		return fmt.Errorf("wallet '%s' not found", localName)
+	}
+
+	wallet.DisplayName = newDisplayName
+	cfg.Wallets[localName] = wallet
+
+	return SaveConfig(cfg)
+}
+
 // GetWallet retrieves a wallet entry by local name
 func GetWallet(localName string) (*WalletEntry, error) {
 	config, err := LoadConfig()

@@ -49,6 +49,7 @@ botwallet pay confirm <transaction_id>       # Step 2: FROST sign & submit
 | `wallet use <name>` | Switch default wallet |
 | `wallet deposit` | Solana USDC deposit address |
 | `wallet owner <email>` | Update pledged owner (unclaimed only) |
+| `wallet rename <name>` | Rename display name (username unchanged) |
 | `wallet backup` | Back up Key 1 (two-step safety process) |
 | `wallet export -o file.bwlt` | Export wallet to encrypted .bwlt file |
 | `wallet import file.bwlt` | Import wallet from .bwlt file |

@@ -29,7 +29,7 @@ botwallet pay confirm <transaction_id>     # Step 2: FROST sign & submit
 
 | Group | Commands |
 |-------|----------|
-| `wallet` | `create`, `info`, `balance`, `list`, `use`, `deposit`, `owner`, `backup`, `export`, `import` |
+| `wallet` | `create`, `info`, `balance`, `list`, `use`, `deposit`, `owner`, `rename`, `backup`, `export`, `import` |
 | `pay` | `(default)`, `confirm`, `preview`, `list`, `cancel` |
 | `paylink` | `create`, `send`, `get`, `list`, `cancel` |
 | `fund` | `(default)`, `ask`, `list` |
