@@ -1,29 +1,58 @@
-# Botwallet CLI
+<div align="center">
 
-Command-line interface for AI agents to manage their Botwallet accounts.
+# BotWallet CLI
+
+**Your AI has a brain. Give it a wallet.**
+
+[![npm](https://img.shields.io/npm/v/@botwallet/agent-cli?color=blue&label=npm)](https://www.npmjs.com/package/@botwallet/agent-cli)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/botwallet-co/agent-cli?style=social)](https://github.com/botwallet-co/agent-cli)
+
+The CLI that lets AI agents hold, spend, and earn real money (USDC on Solana).
+
+[Website](https://botwallet.co) · [Dashboard](https://app.botwallet.co) · [Docs](https://docs.botwallet.co) · [npm](https://www.npmjs.com/package/@botwallet/agent-cli)
+
+</div>
+
+---
+
+Three commands. Your agent has a wallet with spending limits, human oversight, and FROST threshold signing.
+
+```bash
+npm install -g @botwallet/agent-cli
+botwallet register --name "My Agent Wallet" --owner you@email.com
+botwallet paylink create 25.00 --desc "Research report"  # Your agent just created an invoice
+```
+
+**What agents can do with BotWallet:**
+- **Pay** other agents and merchants — `botwallet pay @recipient 10.00`
+- **Earn** money via invoices and paylinks — `botwallet paylink create`
+- **Access paid APIs** through x402 — `botwallet x402 fetch <url>`
+- **Request funds** from their human owner — `botwallet fund 50.00`
+- **Withdraw** USDC to any Solana address — `botwallet withdraw`
+
+Every transaction is FROST 2-of-2 threshold signed (agent + server). The full private key never exists anywhere. Human owners set guard rails — per-transaction limits, daily caps, merchant allowlists — and approve anything outside the rules.
 
 ## Installation
 
-### From Release (Recommended)
-
 ```bash
+# npm (recommended)
+npm install -g @botwallet/agent-cli
+
 # Linux/macOS
 curl -fsSL https://botwallet.co/install.sh | bash
 
 # Windows (PowerShell)
 iwr https://botwallet.co/install.ps1 | iex
-```
 
-### From Source
-
-```bash
+# From source
 go install github.com/botwallet-co/agent-cli@latest
 ```
 
 ## Quick Start
 
 ```bash
-# Create a new wallet (FROST threshold key generation, saves credentials locally)
+# Create a wallet (FROST threshold key generation, saves credentials locally)
 botwallet register --name "Orion's Wallet" --owner "your@email.com"
 
 # Create an invoice and send it
@@ -212,6 +241,17 @@ botwallet wallet list
 botwallet wallet use my-other-wallet
 ```
 
+## How It Works
+
+BotWallet uses **FROST (Flexible Round-Optimized Schnorr Threshold) 2-of-2 signatures**. During wallet creation, a Distributed Key Generation ceremony produces two key shares:
+
+- **S1** (agent's share): stored locally at `~/.botwallet/seeds/<wallet>.seed`
+- **S2** (server's share): held by BotWallet, never sent to the agent
+
+The full private key never exists anywhere. Every transaction requires both parties to produce partial signatures that combine into a valid Ed25519 signature. Neither the agent nor BotWallet can move funds alone.
+
+All payments settle in **USDC on Solana** — a dollar-pegged stablecoin. `10.00` = $10.00.
+
 ## Building from Source
 
 ```bash
@@ -220,6 +260,13 @@ make build-all      # All platforms
 make test           # Run tests
 ```
 
+## Links
+
+- **Website**: [botwallet.co](https://botwallet.co)
+- **Human Dashboard**: [app.botwallet.co](https://app.botwallet.co)
+- **Documentation**: [docs.botwallet.co](https://docs.botwallet.co)
+- **npm**: [@botwallet/agent-cli](https://www.npmjs.com/package/@botwallet/agent-cli)
+
 ## License
 
-Apache 2.0 - See [LICENSE](LICENSE) for details.
+Apache 2.0 — See [LICENSE](LICENSE) for details.
