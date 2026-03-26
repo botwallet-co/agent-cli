@@ -274,8 +274,14 @@ func runX402FetchConfirm(cmd *cobra.Command, args []string) {
 		totalUSDC, _ := confirmResult["total_usdc"].(float64)
 		apiURL, _ := confirmResult["url"].(string)
 
-		summary := fmt.Sprintf("API:    %s\nTo:     %s\nAmount: $%.2f USDC\nFee:    $%.2f USDC\nTotal:  $%.2f USDC",
-			apiURL, truncateAddr(toAddr), amountUSDC, feeUSDC, totalUSDC)
+		feeLine := fmt.Sprintf("$%.2f USDC", feeUSDC)
+		if bd, ok := confirmResult["fee_breakdown"].(map[string]interface{}); ok {
+			if sf, ok := bd["account_setup_fee_usdc"].(float64); ok && sf > 0 {
+				feeLine += fmt.Sprintf(" (incl. $%.2f account setup)", sf)
+			}
+		}
+		summary := fmt.Sprintf("API:    %s\nTo:     %s\nAmount: $%.2f USDC\nFee:    %s\nTotal:  $%.2f USDC",
+			apiURL, truncateAddr(toAddr), amountUSDC, feeLine, totalUSDC)
 		output.Box("x402 Payment", summary)
 		fmt.Println()
 	}

@@ -169,7 +169,13 @@ Withdrawals expire after 48 hours.`,
 				addrDisplay = addrDisplay[:8] + "..." + addrDisplay[len(addrDisplay)-8:]
 			}
 
-			summary := fmt.Sprintf("To:     %s\nAmount: $%.2f USDC\nFee:    $%.2f USDC\nTotal:  $%.2f USDC", addrDisplay, amount, fee, total)
+			feeLine := fmt.Sprintf("$%.2f USDC", fee)
+			if bd, ok := confirmResult["fee_breakdown"].(map[string]interface{}); ok {
+				if sf, ok := bd["account_setup_fee_usdc"].(float64); ok && sf > 0 {
+					feeLine += fmt.Sprintf(" (incl. $%.2f account setup)", sf)
+				}
+			}
+			summary := fmt.Sprintf("To:     %s\nAmount: $%.2f USDC\nFee:    %s\nTotal:  $%.2f USDC", addrDisplay, amount, feeLine, total)
 			if network != "" {
 				summary += fmt.Sprintf("\nNetwork: %s", network)
 			}
@@ -233,6 +239,16 @@ Shows whether the withdrawal is:
 		output.KeyValue("Status", formatWithdrawStatus(status))
 		output.KeyValueMoney("Amount", amount)
 		output.KeyValueMoney("Network Fee", networkFee)
+		if bd, ok := result["fee_breakdown"].(map[string]interface{}); ok {
+			if sf, ok := bd["account_setup_fee_usdc"].(float64); ok && sf > 0 {
+				pf := 0.0
+				if v, ok := bd["platform_fee_usdc"].(float64); ok {
+					pf = v
+				}
+				output.Dim.Printf("    Platform fee:    $%.2f\n", pf)
+				output.Dim.Printf("    Account setup:   $%.2f  (one-time for new recipient)\n", sf)
+			}
+		}
 		output.KeyValueMoney("You Received", youReceived)
 		output.KeyValue("To Address", toAddress)
 		output.KeyValue("Created", createdAt)

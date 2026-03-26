@@ -375,6 +375,31 @@ func KeyValueURL(key string, url string) {
 	URL.Printf("%s\n", url)
 }
 
+// feeBreakdownSublines shows indented ATA fee details when present in API response.
+// Only shows sub-lines when account_setup_fee > 0.
+func feeBreakdownSublines(data map[string]interface{}) {
+	if !humanOutput {
+		return
+	}
+	breakdown, ok := data["fee_breakdown"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	setupFee := 0.0
+	if v, ok := breakdown["account_setup_fee_usdc"].(float64); ok {
+		setupFee = v
+	}
+	if setupFee <= 0 {
+		return
+	}
+	platformFee := 0.0
+	if v, ok := breakdown["platform_fee_usdc"].(float64); ok {
+		platformFee = v
+	}
+	Dim.Printf("    Platform fee:    $%.2f\n", platformFee)
+	Dim.Printf("    Account setup:   $%.2f  (one-time for new recipient)\n", setupFee)
+}
+
 // =============================================================================
 // Section Headers
 // =============================================================================
@@ -716,6 +741,7 @@ func FormatPaySuccess(data map[string]interface{}) {
 	fee := getFloat(data, "fee_usdc", "fee")
 	if fee > 0 {
 		KeyValueMoney("Fee", fee)
+		feeBreakdownSublines(data)
 	}
 
 	// Total (amount + fee)
@@ -824,6 +850,7 @@ func FormatPayInitiated(data map[string]interface{}) {
 	fee := getFloat(data, "fee_usdc", "fee")
 	if fee > 0 {
 		KeyValueMoney("Fee", fee)
+		feeBreakdownSublines(data)
 	}
 	total := getFloat(data, "total_usdc", "total")
 	if total > 0 {
@@ -1216,6 +1243,7 @@ func FormatCanIAfford(data map[string]interface{}) {
 		KeyValue("To", getString(data, "to"))
 		KeyValueMoney("Amount", getFloat(data, "amount_usdc", "amount"))
 		KeyValueMoney("Fee", getFloat(data, "fee_usdc", "fee"))
+		feeBreakdownSublines(data)
 		KeyValueMoney("Total", getFloat(data, "total_usdc", "total"))
 		KeyValueMoney("Balance After", getFloat(data, "balance_after_usdc", "balance_after"))
 
@@ -1724,6 +1752,7 @@ func FormatWithdraw(data map[string]interface{}) {
 	KeyValue("Approval ID", approvalID)
 	KeyValueMoney("Amount", getFloat(data, "amount_usdc", "amount"))
 	KeyValueMoney("Network Fee", getFloat(data, "network_fee_usdc", "network_fee"))
+	feeBreakdownSublines(data)
 	KeyValueMoney("You'll Receive", getFloat(data, "you_receive_usdc", "you_receive"))
 	KeyValue("To Address", getString(data, "to_address"))
 
@@ -1777,6 +1806,7 @@ func FormatWithdrawSuccess(data map[string]interface{}) {
 	}
 	KeyValueMoney("Amount", getFloat(data, "amount_usdc", "amount"))
 	KeyValueMoney("Fee", getFloat(data, "fee_usdc", "fee"))
+	feeBreakdownSublines(data)
 	KeyValue("To Address", getString(data, "to_address"))
 
 	if solanaSig := getString(data, "solana_signature"); solanaSig != "" {

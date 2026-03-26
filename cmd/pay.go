@@ -206,7 +206,13 @@ Transactions expire after 48 hours.`,
 			totalUSDC, _ := confirmResult["total_usdc"].(float64)
 			network, _ := confirmResult["network"].(string)
 
-			summary := fmt.Sprintf("To:     @%s\nAmount: $%.2f USDC\nFee:    $%.2f USDC\nTotal:  $%.2f USDC", toDisplay, amountUSDC, feeUSDC, totalUSDC)
+			feeLine := fmt.Sprintf("$%.2f USDC", feeUSDC)
+			if bd, ok := confirmResult["fee_breakdown"].(map[string]interface{}); ok {
+				if sf, ok := bd["account_setup_fee_usdc"].(float64); ok && sf > 0 {
+					feeLine += fmt.Sprintf(" (incl. $%.2f account setup)", sf)
+				}
+			}
+			summary := fmt.Sprintf("To:     @%s\nAmount: $%.2f USDC\nFee:    %s\nTotal:  $%.2f USDC", toDisplay, amountUSDC, feeLine, totalUSDC)
 			if network != "" {
 				summary += fmt.Sprintf("\nNetwork: %s", network)
 			}
