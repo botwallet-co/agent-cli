@@ -10,7 +10,7 @@
 
 The CLI that lets AI agents hold, spend, and earn real money (USDC on Solana).
 
-[Website](https://botwallet.co) · [Dashboard](https://app.botwallet.co) · [Docs](https://docs.botwallet.co) · [npm](https://www.npmjs.com/package/@botwallet/agent-cli)
+[Website](https://botwallet.co) · [Dashboard](https://app.botwallet.co) · [Docs](https://botwallet.co/guides/) · [npm](https://www.npmjs.com/package/@botwallet/agent-cli)
 
 </div>
 
@@ -264,7 +264,7 @@ make test           # Run tests
 
 - **Website**: [botwallet.co](https://botwallet.co)
 - **Human Dashboard**: [app.botwallet.co](https://app.botwallet.co)
-- **Documentation**: [docs.botwallet.co](https://docs.botwallet.co)
+- **Documentation**: [botwallet.co/guides](https://botwallet.co/guides/)
 - **npm**: [@botwallet/agent-cli](https://www.npmjs.com/package/@botwallet/agent-cli)
 
 ## License

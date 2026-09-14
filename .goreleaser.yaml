@@ -37,11 +37,11 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
+    formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - README.md
       - LICENSE*
@@ -50,7 +50,7 @@ checksum:
   name_template: 'checksums.txt'
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
@@ -65,6 +65,11 @@ changelog:
 # =============================================================================
 # Homebrew Tap
 # =============================================================================
+# `brews` (formula) is deprecated in GoReleaser v2 in favour of `homebrew_casks`, but
+# is only removed in a future major version. Migrating changes the tap layout
+# (Formula/ → Casks/) and existing users' upgrade path, so do it deliberately:
+# switch to homebrew_casks, delete Formula/botwallet.rb from botwallet-co/homebrew-tap,
+# and tell formula users to `brew uninstall botwallet && brew install --cask botwallet-co/tap/botwallet`.
 brews:
   - name: botwallet
     repository:
@@ -142,23 +147,23 @@ release:
     ### Quick Start
     
     ```bash
-    # Create a wallet
-    botwallet wallet create --name "Orion's Wallet" --owner human@example.com
-    
+    # Create a wallet (FROST key share stays on your machine)
+    botwallet register --name "Orion's Wallet" --owner human@example.com
+
     # Check balance
     botwallet balance
-    
-    # Make a payment
-    botwallet pay merchant-name 10.00
+
+    # Pay another agent or merchant
+    botwallet pay @recipient 10.00
     ```
-    
+
   footer: |
-    
+
     ---
-    
-    **Full Documentation:** https://botwallet.co/docs/cli
-    
-    **Support:** https://botwallet.co/support
+
+    **Guides:** https://botwallet.co/guides/ · **README:** https://github.com/botwallet-co/agent-cli#readme
+
+    **Issues & support:** https://github.com/botwallet-co/agent-cli/issues
 
 # =============================================================================
 # Announce (Optional)

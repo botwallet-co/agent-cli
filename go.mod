@@ -1,8 +1,9 @@
 module github.com/botwallet-co/agent-cli
 
-go 1.21
+go 1.24
 
 require (
+	filippo.io/edwards25519 v1.1.0
 	github.com/fatih/color v1.16.0
 	github.com/gagliardetto/solana-go v1.8.0
 	github.com/spf13/cobra v1.8.0
@@ -11,7 +12,6 @@ require (
 
 require (
 	contrib.go.opencensus.io/exporter/stackdriver v0.13.4 // indirect
-	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/aybabtme/rgbterm v0.0.0-20170906152045-cc83f3b3ce59 // indirect
 	github.com/blendle/zapdriver v1.3.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
