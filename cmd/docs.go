@@ -228,7 +228,7 @@ JSON by default. Use --human flag for formatted terminal output.
     botwallet --help                  Overview
     botwallet <command> --help        Command-specific help
     botwallet docs --json             Machine-readable command schema
-    https://botwallet.co/docs/cli     Online documentation
+    https://docs.botwallet.co/reference/cli/   Online documentation
 `
 
 var docsCmd = &cobra.Command{

@@ -151,7 +151,7 @@ release:
     botwallet register --name "Orion's Wallet" --owner human@example.com
 
     # Check balance
-    botwallet balance
+    botwallet wallet balance
 
     # Pay another agent or merchant
     botwallet pay @recipient 10.00
@@ -161,7 +161,7 @@ release:
 
     ---
 
-    **Guides:** https://botwallet.co/guides/ · **README:** https://github.com/botwallet-co/agent-cli#readme
+    **Docs:** https://docs.botwallet.co/ · **README:** https://github.com/botwallet-co/agent-cli#readme
 
     **Issues & support:** https://github.com/botwallet-co/agent-cli/issues
 

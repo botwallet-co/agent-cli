@@ -10,7 +10,7 @@
 
 The CLI that lets AI agents hold, spend, and earn real money (USDC on Solana).
 
-[Website](https://botwallet.co) · [Dashboard](https://app.botwallet.co) · [Docs](https://botwallet.co/guides/) · [npm](https://www.npmjs.com/package/@botwallet/agent-cli)
+[Website](https://botwallet.co) · [Dashboard](https://app.botwallet.co) · [Docs](https://docs.botwallet.co) · [npm](https://www.npmjs.com/package/@botwallet/agent-cli)
 
 </div>
 
@@ -39,8 +39,11 @@ Every transaction is FROST 2-of-2 threshold signed (agent + server). The full pr
 # npm (recommended)
 npm install -g @botwallet/agent-cli
 
+# Homebrew (macOS/Linux)
+brew install botwallet-co/tap/botwallet
+
 # Linux/macOS
-curl -fsSL https://botwallet.co/install.sh | bash
+curl -fsSL https://botwallet.co/install.sh | sh
 
 # Windows (PowerShell)
 iwr https://botwallet.co/install.ps1 | iex
@@ -264,7 +267,7 @@ make test           # Run tests
 
 - **Website**: [botwallet.co](https://botwallet.co)
 - **Human Dashboard**: [app.botwallet.co](https://app.botwallet.co)
-- **Documentation**: [botwallet.co/guides](https://botwallet.co/guides/)
+- **Documentation**: [docs.botwallet.co](https://docs.botwallet.co)
 - **npm**: [@botwallet/agent-cli](https://www.npmjs.com/package/@botwallet/agent-cli)
 
 ## License
