@@ -11,12 +11,12 @@
 // =============================================================================
 
 const { spawn } = require('child_process');
-const path = require('path');
 const fs = require('fs');
+const { downloadBinary, nativeBinaryPath } = require('../scripts/install');
 
 const isWindows = process.platform === 'win32';
-const binaryName = isWindows ? 'botwallet.exe' : 'botwallet';
-const binaryPath = path.join(__dirname, binaryName);
+// bin/botwallet-native (bin/botwallet.exe on Windows), never this file
+const binaryPath = nativeBinaryPath(__dirname);
 
 function stderr(msg) {
   process.stderr.write(msg + '\n');
@@ -46,9 +46,13 @@ async function downloadAndRun() {
   stderr('Botwallet CLI binary not found — downloading automatically...');
 
   try {
-    const { downloadBinary } = require('../scripts/install');
     await downloadBinary(__dirname, { log: stderr });
   } catch (err) {
+    // Another first run started at the same time may have installed it
+    if (fs.existsSync(binaryPath)) {
+      runBinary();
+      return;
+    }
     stderr('');
     stderr('Download failed: ' + err.message);
     stderr('');

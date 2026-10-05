@@ -4,7 +4,10 @@ on:
   push:
     tags:
       - 'v*'
-  # Publishes an already released tag to npm again, without GoReleaser
+  # Publishes an already released tag to npm again, without GoReleaser. Run it from
+  # the tag itself (gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z) so the
+  # npm provenance names the commit that was built; tags before v0.1.0-beta.14
+  # don't have this trigger and need --ref main.
   workflow_dispatch:
     inputs:
       tag:
@@ -61,11 +64,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Upgrade npm (trusted publishing needs npm >= 11.5.1)
-        run: npm install -g npm@latest && npm --version
+      # Node 24 ships an npm that can use trusted publishing (11.5.1 or later), so
+      # the job that holds the publish token installs nothing
+      - name: Check npm supports trusted publishing
+        run: |
+          v=$(npm --version) && echo "npm $v"
+          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number);process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)' "$v" \
+            || { echo "::error::npm $v cannot use trusted publishing; it needs 11.5.1 or later"; exit 1; }
 
       - name: Get version from tag
         id: version

@@ -18,7 +18,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
 const PACKAGE_VERSION = require('../package.json').version;
 const GITHUB_RELEASE_URL = `https://github.com/botwallet-co/agent-cli/releases/download/v${PACKAGE_VERSION}`;
@@ -65,9 +65,20 @@ function getBinaryName() {
   return `botwallet_${PACKAGE_VERSION}_${platform}_${arch}${ext}`;
 }
 
+// Where the Go binary is installed. It must never be bin/botwallet: that is
+// the Node launcher npm links as the `botwallet` command, and the botwallet
+// and botwallet-cli wrapper packages require() it.
+function nativeBinaryPath(binDir) {
+  return path.join(binDir, process.platform === 'win32' ? 'botwallet.exe' : 'botwallet-native');
+}
+
 function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
+    file.on('error', (err) => {
+      fs.unlink(dest, () => {});
+      reject(err);
+    });
 
     const request = https.get(url, (response) => {
       if (response.statusCode === 302 || response.statusCode === 301) {
@@ -134,17 +145,24 @@ function verifyArchive(archivePath, archiveName, sums) {
   }
 }
 
+// The paths go in as arguments or environment variables, never into a
+// command string, so quotes or spaces in the install path can't break it.
+// On Windows, .NET's ZipFile takes the paths literally (Expand-Archive reads
+// [ and ] as wildcards), and Stop makes any failure exit non-zero.
 function extractArchive(archivePath, destDir) {
   const platform = getPlatform();
 
   if (platform === 'windows') {
-    execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`, {
-      stdio: 'pipe'
+    execFileSync('powershell', [
+      '-NoProfile', '-NonInteractive', '-Command',
+      "$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; " +
+      '[IO.Compression.ZipFile]::ExtractToDirectory($env:BOTWALLET_ARCHIVE, $env:BOTWALLET_DEST)'
+    ], {
+      stdio: 'pipe',
+      env: Object.assign({}, process.env, { BOTWALLET_ARCHIVE: archivePath, BOTWALLET_DEST: destDir })
     });
   } else {
-    execSync(`tar -xzf "${archivePath}" -C "${destDir}"`, {
-      stdio: 'pipe'
-    });
+    execFileSync('tar', ['-xzf', archivePath, '-C', destDir], { stdio: 'pipe' });
   }
 }
 
@@ -154,55 +172,52 @@ function extractArchive(archivePath, destDir) {
 async function downloadBinary(binDir, options = {}) {
   const log = options.log || console.log.bind(console);
 
-  const tmpDir = path.join(binDir, '..', 'tmp');
-
-  if (!fs.existsSync(binDir)) {
-    fs.mkdirSync(binDir, { recursive: true });
-  }
-  if (!fs.existsSync(tmpDir)) {
-    fs.mkdirSync(tmpDir, { recursive: true });
-  }
+  fs.mkdirSync(binDir, { recursive: true });
+  // A folder per run, so first runs started at the same time (agents often run
+  // commands in parallel) don't delete each other's downloads
+  const tmpDir = fs.mkdtempSync(path.join(__dirname, '..', 'tmp-'));
 
   const archiveName = getArchiveName();
   const archiveUrl = `${GITHUB_RELEASE_URL}/${archiveName}`;
   const archivePath = path.join(tmpDir, archiveName);
-
-  log(`Downloading ${archiveName}...`);
-  await downloadFile(archiveUrl, archivePath);
-
-  log('Verifying checksum...');
-  try {
-    verifyArchive(archivePath, archiveName, await loadChecksums(tmpDir));
-  } catch (err) {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    throw err;
-  }
-
-  log('Extracting...');
-  extractArchive(archivePath, tmpDir);
-
   const platform = getPlatform();
-  const localBinaryName = platform === 'windows' ? 'botwallet.exe' : 'botwallet';
-  const srcBinary = path.join(tmpDir, localBinaryName);
-  const destBinary = path.join(binDir, localBinaryName);
+  const destBinary = nativeBinaryPath(binDir);
 
-  if (!fs.existsSync(srcBinary)) {
-    const altName = getBinaryName();
-    const altSrcBinary = path.join(tmpDir, altName);
-    if (fs.existsSync(altSrcBinary)) {
-      fs.renameSync(altSrcBinary, destBinary);
-    } else {
-      throw new Error(`Binary not found in archive. Expected: ${localBinaryName} or ${altName}`);
+  try {
+    log(`Downloading ${archiveName}...`);
+    await downloadFile(archiveUrl, archivePath);
+
+    log('Verifying checksum...');
+    verifyArchive(archivePath, archiveName, await loadChecksums(tmpDir));
+
+    log('Extracting...');
+    extractArchive(archivePath, tmpDir);
+
+    // The archive holds botwallet(.exe); older releases used the long name
+    const archiveBinaryName = platform === 'windows' ? 'botwallet.exe' : 'botwallet';
+    const srcBinary = [archiveBinaryName, getBinaryName()]
+      .map((name) => path.join(tmpDir, name))
+      .find((p) => fs.existsSync(p));
+    if (!srcBinary) {
+      throw new Error(`Binary not found in archive. Expected: ${archiveBinaryName} or ${getBinaryName()}`);
     }
-  } else {
-    fs.renameSync(srcBinary, destBinary);
-  }
+    try {
+      fs.renameSync(srcBinary, destBinary);
+    } catch (err) {
+      // Another run may have installed it first; on Windows a running
+      // botwallet.exe can't be replaced
+      if (!fs.existsSync(destBinary)) throw err;
+    }
 
-  if (platform !== 'windows') {
-    fs.chmodSync(destBinary, 0o755);
+    if (platform !== 'windows') {
+      fs.chmodSync(destBinary, 0o755);
+    }
+  } finally {
+    // A cleanup failure must not hide the real result
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 3 });
+    } catch {}
   }
-
-  fs.rmSync(tmpDir, { recursive: true, force: true });
 
   // Verify the binary is real (not empty)
   const stat = fs.statSync(destBinary);
@@ -262,7 +277,7 @@ async function postinstall() {
   }
 }
 
-module.exports = { downloadBinary, parseChecksums, verifyArchive };
+module.exports = { downloadBinary, nativeBinaryPath, parseChecksums, verifyArchive };
 
 if (require.main === module) {
   postinstall();

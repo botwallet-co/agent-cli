@@ -10,7 +10,8 @@
 # Build output
 dist/
 npm/bin/botwallet.exe
-npm/tmp/
+npm/bin/botwallet-native
+npm/tmp*/
 
 # Dependencies
 vendor/
