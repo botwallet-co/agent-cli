@@ -55,8 +55,12 @@ type ProbeResult struct {
 }
 
 // PaymentSummary is a simplified view of a PaymentOption for agent consumption.
+// PriceUSDC is the raw amount in the option's asset units (USDC base units
+// when Asset is the USDC mint).
 type PaymentSummary struct {
 	Network     string `json:"network"`
+	Scheme      string `json:"scheme,omitempty"`
+	Asset       string `json:"asset,omitempty"`
 	PriceUSDC   string `json:"price_usdc"`
 	PayTo       string `json:"pay_to"`
 	Description string `json:"description,omitempty"`

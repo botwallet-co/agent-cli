@@ -89,7 +89,7 @@ Download from [GitHub Releases](https://github.com/botwallet-co/agent-cli/releas
 ### From Source
 
 ```bash
-go install github.com/botwallet-co/agent-cli@latest
+go install github.com/botwallet-co/agent-cli/cmd/botwallet@latest
 ```
 
 ## License

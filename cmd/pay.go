@@ -79,18 +79,19 @@ func runPayCreate(cmd *cobra.Command, args []string) {
 
 		// Strip @ prefix if user typed @username (allows both @user and user)
 		to := stripAtPrefix(args[0])
-		amount, parseErr := strconv.ParseFloat(amountArg, 64)
-		if parseErr != nil {
-			output.ValidationError("Invalid amount: "+amountArg, "Amount should be a number, e.g., 10.00")
+		amountCents, ok := parseAmountArg(amountArg, "10.00")
+		if !ok {
 			return
 		}
 
-		if amount <= 0 {
-			output.ValidationError("Amount must be greater than 0", "Provide a positive number")
+		// The server pays anything shaped like an address as an address, so
+		// one that does not decode to 32 bytes must stop here.
+		if looksLikeSolanaAddress(to) && !isValidSolanaAddress(to) {
+			output.ValidationError("Invalid Solana address format", invalidAddressHowToFix)
 			return
 		}
 
-		result, err = client.Pay(to, amount, payNote, payReference, payIdempotencyKey)
+		result, err = client.Pay(to, centsToDollars(amountCents), payNote, payReference, payIdempotencyKey)
 	}
 
 	if err != nil {
@@ -175,6 +176,16 @@ Transactions expire after 48 hours.`,
 		}
 
 		transactionId := args[0]
+		target := paymentTarget(transactionId)
+
+		// Load Key 1 first: if it is missing or belongs to another wallet,
+		// stop before the server starts processing the payment.
+		signer, err := loadSigningWallet()
+		if err != nil {
+			exitSigningError(err, target)
+			return
+		}
+
 		client := getClient()
 
 		if output.IsHumanOutput() {
@@ -183,7 +194,7 @@ Transactions expire after 48 hours.`,
 
 		confirmResult, err := client.ConfirmPayment(transactionId)
 		if err != nil {
-			handleAPIError(err)
+			exitConfirmError(err, target)
 			return
 		}
 
@@ -220,10 +231,15 @@ Transactions expire after 48 hours.`,
 			fmt.Println()
 		}
 
-		submitResult, err := frostSignAndSubmit(client, transactionId, messageB64, walletFlag)
+		intent, err := paymentIntent(confirmResult)
 		if err != nil {
-			output.APIError("SIGNING_ERROR", err.Error(),
-				"Check your wallet configuration and try again", nil)
+			exitSigningError(err, target)
+			return
+		}
+
+		submitResult, err := frostSignAndSubmit(client, transactionId, messageB64, signer, intent)
+		if err != nil {
+			exitSigningError(err, target)
 			return
 		}
 
@@ -254,20 +270,14 @@ exactly what will happen before committing to a payment.`,
 
 		// Strip @ prefix if user typed @username (allows both @user and user)
 		to := stripAtPrefix(args[0])
-		amount, err := strconv.ParseFloat(args[1], 64)
-		if err != nil {
-			output.ValidationError("Invalid amount: "+args[1], "Amount should be a number, e.g., 10.00")
-			return
-		}
-
-		if amount <= 0 {
-			output.ValidationError("Amount must be greater than 0", "Provide a positive number")
+		amountCents, ok := parseAmountArg(args[1], "10.00")
+		if !ok {
 			return
 		}
 
 		client := getClient()
 
-		result, err := client.CanIAfford(to, amount)
+		result, err := client.CanIAfford(to, centsToDollars(amountCents))
 		if err != nil {
 			handleAPIError(err)
 			return
@@ -298,9 +308,11 @@ By default, shows actionable payments (things you need to act on):
 Use --status to filter:
 - actionable (default): Transactions you can act on
 - all: All transactions
+- pre_approved, awaiting_approval, approved: One of the actionable states
 - completed: Successfully executed
 - failed: Failed transactions
-- expired: Expired transactions
+- rejected: Blocked by guard rails or the owner
+- expired: Expired or cancelled transactions
 - pending: Alias for actionable`,
 	Example: `  botwallet pay list                        # Actionable transactions
   botwallet pay list --status all           # All history
@@ -311,9 +323,16 @@ Use --status to filter:
 			return
 		}
 
+		status, ok := payStatusFilter(payListStatus)
+		if !ok {
+			output.ValidationError("Unknown status: "+payListStatus,
+				"Use one of: actionable, all, pre_approved, awaiting_approval, approved, completed, failed, rejected, expired")
+			return
+		}
+
 		client := getClient()
 
-		result, err := client.ListPayments(payListID, payListStatus, payListLimit, payListOffset)
+		result, err := client.ListPayments(payListID, status, payListLimit, payListOffset)
 		if err != nil {
 			handleAPIError(err)
 			return
@@ -324,10 +343,27 @@ Use --status to filter:
 }
 
 func init() {
-	payListCmd.Flags().StringVar(&payListStatus, "status", "actionable", "Filter: actionable (default), all, completed, failed, expired")
+	payListCmd.Flags().StringVar(&payListStatus, "status", "actionable", "Filter: actionable (default), all, pre_approved, awaiting_approval, approved, completed, failed, rejected, expired")
 	payListCmd.Flags().StringVar(&payListID, "id", "", "Get specific transaction by ID")
 	payListCmd.Flags().IntVar(&payListLimit, "limit", 20, "Maximum number of results")
 	payListCmd.Flags().IntVar(&payListOffset, "offset", 0, "Offset for pagination")
+}
+
+// payStatusFilter checks a --status value for pay list. The server takes
+// actionable (pending is its alias), all, or one payment status, and
+// answers an unknown status with an internal error. Cancelling a payment
+// marks it expired, so cancelled lists expired payments.
+func payStatusFilter(status string) (string, bool) {
+	switch s := strings.ToLower(strings.TrimSpace(status)); s {
+	case "", "actionable", "pending", "all",
+		"pre_approved", "awaiting_approval", "approved",
+		"completed", "failed", "rejected", "expired", "reversed":
+		return s, true
+	case "cancelled", "canceled":
+		return "expired", true
+	default:
+		return "", false
+	}
 }
 
 var payCancelCmd = &cobra.Command{

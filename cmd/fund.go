@@ -34,7 +34,8 @@ Use this when:
 - Your balance is running low
 - You need to pay for external services
 
-Your owner sees these in their Human Portal and can approve/deny them.
+Your owner sees these in their dashboard and can fund them (pay the
+included payment link) or dismiss them.
 
 You can call this directly or use subcommands:
   botwallet fund 50.00 --reason "..."   (shortcut for fund ask)
@@ -64,8 +65,9 @@ var fundAskCmd = &cobra.Command{
 	Short: "Request funds from your human owner",
 	Long: `Request funds from your human owner.
 
-The request goes to your owner's Human Portal where they can approve or deny it.
-Once approved, the funds are deposited directly into your wallet.
+The request goes to your owner's dashboard. Your owner can pay the request's
+payment link (it is then marked funded and the USDC arrives in your wallet)
+or dismiss it.
 
 Always provide a reason so your owner knows why you need the funds!`,
 	Example: `  botwallet fund ask 50.00 --reason "API costs running low"
@@ -76,14 +78,8 @@ Always provide a reason so your owner knows why you need the funds!`,
 			return
 		}
 
-		amount, err := strconv.ParseFloat(args[0], 64)
-		if err != nil {
-			output.ValidationError("Invalid amount: "+args[0], "Amount should be a number, e.g., 50.00")
-			return
-		}
-
-		if amount <= 0 {
-			output.ValidationError("Amount must be greater than 0", "Provide a positive number")
+		amountCents, ok := parseAmountArg(args[0], "50.00")
+		if !ok {
 			return
 		}
 
@@ -94,7 +90,7 @@ Always provide a reason so your owner knows why you need the funds!`,
 
 		client := getClient()
 
-		result, err := client.RequestFunds(amount, fundAskReason)
+		result, err := client.RequestFunds(centsToDollars(amountCents), fundAskReason)
 		if err != nil {
 			handleAPIError(err)
 			return
@@ -123,7 +119,7 @@ Always provide a reason so your owner knows why you need the funds!`,
 			output.KeyValue("Funding Link", payURL)
 		}
 
-		output.Tip("Your owner will review this in their Human Portal.")
+		output.Tip("Your owner will see this in their dashboard.")
 	},
 }
 
@@ -159,7 +155,7 @@ var fundListCmd = &cobra.Command{
 	Long: `List your fund request history.
 
 Shows all requests you've made to your owner, including pending,
-approved, and denied requests.`,
+funded, and dismissed requests.`,
 	Example: `  botwallet fund list
   botwallet fund list --status pending
   botwallet fund list --limit 10`,
@@ -168,9 +164,16 @@ approved, and denied requests.`,
 			return
 		}
 
+		status, ok := fundStatusFilter(fundListStatus)
+		if !ok {
+			output.ValidationError("Unknown status: "+fundListStatus,
+				"Use one of: pending, funded, dismissed, all")
+			return
+		}
+
 		client := getClient()
 
-		result, err := client.ListFundRequests(fundListStatus, fundListLimit, fundListOffset)
+		result, err := client.ListFundRequests(status, fundListLimit, fundListOffset)
 		if err != nil {
 			handleAPIError(err)
 			return
@@ -233,7 +236,7 @@ approved, and denied requests.`,
 }
 
 func init() {
-	fundListCmd.Flags().StringVar(&fundListStatus, "status", "", "Filter by status: pending, approved, denied")
+	fundListCmd.Flags().StringVar(&fundListStatus, "status", "", "Filter by status: pending, funded, dismissed, all (default: all)")
 	fundListCmd.Flags().IntVar(&fundListLimit, "limit", 20, "Maximum results to return")
 	fundListCmd.Flags().IntVar(&fundListOffset, "offset", 0, "Offset for pagination")
 }
@@ -241,6 +244,24 @@ func init() {
 // =============================================================================
 // Helper Functions
 // =============================================================================
+
+// fundStatusFilter checks a --status value for fund list. A fund request is
+// pending until the owner pays its link (funded) or dismisses it. Older
+// help listed approved and denied, so those still work, as funded and
+// dismissed. The server compares the value as is, so an unknown one would
+// silently list nothing.
+func fundStatusFilter(status string) (string, bool) {
+	switch s := strings.ToLower(strings.TrimSpace(status)); s {
+	case "", "all", "pending", "funded", "dismissed":
+		return s, true
+	case "approved":
+		return "funded", true
+	case "denied", "rejected":
+		return "dismissed", true
+	default:
+		return "", false
+	}
+}
 
 func formatFundMoney(amount float64) string {
 	return "$" + strconv.FormatFloat(amount, 'f', 2, 64)

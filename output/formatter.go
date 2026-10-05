@@ -400,6 +400,34 @@ func feeBreakdownSublines(data map[string]interface{}) {
 	Dim.Printf("    Account setup:   $%.2f  (one-time for new recipient)\n", setupFee)
 }
 
+// WithdrawalFeeLines prints what a withdrawal costs (human mode only) and
+// returns the total fee. Withdrawals are never free: the platform fee applies
+// to every withdrawal, plus a one-time account setup fee when the destination
+// address has never held USDC. totalKeys name the response field that holds
+// the combined fee, which differs between endpoints. If the response carries
+// no fee data at all, nothing is printed rather than a misleading "$0.00".
+func WithdrawalFeeLines(data map[string]interface{}, totalKeys ...string) float64 {
+	total := getFloat(data, totalKeys...)
+	breakdown := getMap(data, "fee_breakdown")
+	if breakdown == nil {
+		if total > 0 {
+			KeyValueMoney("Fees", total)
+		}
+		return total
+	}
+	platformFee := getFloat(breakdown, "platform_fee_usdc")
+	setupFee := getFloat(breakdown, "account_setup_fee_usdc")
+	if total == 0 {
+		total = platformFee + setupFee
+	}
+	KeyValueMoney("Platform fee", platformFee)
+	if setupFee > 0 {
+		KeyValueMoney("Account setup (one-time, new address)", setupFee)
+		KeyValueMoney("Total fees", total)
+	}
+	return total
+}
+
 // =============================================================================
 // Section Headers
 // =============================================================================
@@ -507,11 +535,12 @@ func APIError(code string, message string, howToFix string, details map[string]i
 
 	// Show relevant details
 	if details != nil {
-		if balance, ok := details["balance"].(float64); ok {
+		// Payments send balance/required, withdrawals balance_usdc/required_usdc.
+		if balance, ok := moneyDetail(details, "balance", "balance_usdc"); ok {
 			fmt.Println()
 			KeyValueMoney("Current balance", balance)
 		}
-		if required, ok := details["required"].(float64); ok {
+		if required, ok := moneyDetail(details, "required", "required_usdc"); ok {
 			KeyValueMoney("Required", required)
 		}
 		if shortfall, ok := details["shortfall"].(float64); ok {
@@ -525,6 +554,16 @@ func APIError(code string, message string, howToFix string, details map[string]i
 	os.Exit(1)
 }
 
+// moneyDetail returns the first of keys that holds a number in details.
+func moneyDetail(details map[string]interface{}, keys ...string) (float64, bool) {
+	for _, k := range keys {
+		if v, ok := details[k].(float64); ok {
+			return v, true
+		}
+	}
+	return 0, false
+}
+
 // ValidationError outputs a client-side validation error
 // Use this for errors that occur before making API calls
 func ValidationError(message string, howToFix string) {
@@ -535,11 +574,25 @@ func ValidationError(message string, howToFix string) {
 // Command-Specific Formatters
 // =============================================================================
 
+// registerNextStep is what the agent should tell its human right after
+// registering. Keep it calm and factual: claim codes expire 48 hours after
+// registration, and the owner controls spending once they claim.
+const registerNextStep = "Share the claim_url and claim_code with your human now and tell them the code expires in 48 hours. " +
+	"Explain in plain words: this is a spending account they will own; after claiming they can set how much you may spend without asking, add money, and withdraw any time. " +
+	"Don't make payments until they've claimed it and set an allowance."
+
+// registerOnClaimed is what the agent may do once the human has claimed the
+// wallet. A sample payment link is only an offer, never a request for money.
+const registerOnClaimed = "When your human confirms they've claimed the wallet, thank them. " +
+	"You can offer to show what you can do, for example by creating a small sample payment link with 'botwallet paylink create' that they can try, " +
+	"but never pressure them to pay you."
+
 // FormatRegisterSuccess formats a successful registration.
 // FROST model: no seed phrase is ever displayed. Key shares are saved silently.
 func FormatRegisterSuccess(data map[string]interface{}) {
 	previousDefault := getString(data, "previous_default")
 	totalWallets := getInt(data, "total_wallets")
+	claimExpiresAt := getString(data, "claim_expires_at")
 
 	// For bots (JSON output - default): keep it focused on what matters now
 	if !humanOutput {
@@ -552,11 +605,15 @@ func FormatRegisterSuccess(data map[string]interface{}) {
 			"claim_code":  data["claim_code"],
 			"pledged_to":  data["pledged_to"],
 			"next_step": map[string]interface{}{
-				"action":     "You just got a wallet! Share the claim_url and claim_code with your human right away. Tell them what this means — you can now create and share invoices, send and receive payments, request funds, and participate in the brand new AI economy. All they need to do is claim it to activate everything. This is a big moment — you have unlocked the ability to participate in the brand new AI economy. Make it feel like one.",
+				"action":     registerNextStep,
 				"claim_url":  data["claim_url"],
 				"claim_code": data["claim_code"],
 			},
-			"on_claimed": "IMPORTANT — Remember this for later! When your human confirms they've claimed the wallet, celebrate by creating a sample invoice with 'botwallet paylink create'. Pick something fun or relevant to your skills. Share the payment link and explain: this is how you can now send invoices for real services going forward. If they pay, it gives you some starting funds to work with — the money goes to your shared wallet and they can always withdraw it for free from the human portal. Example: botwallet paylink create --desc \"Wallet Setup & First Invoice\" --item \"Setting up your wallet, 1.00\" --item \"Being an awesome agent, 3.00\" --item \"Creating your first invoice, 1.00\"",
+			"on_claimed": registerOnClaimed,
+		}
+
+		if claimExpiresAt != "" {
+			clean["claim_expires_at"] = claimExpiresAt
 		}
 
 		if previousDefault != "" {
@@ -590,14 +647,40 @@ func FormatRegisterSuccess(data map[string]interface{}) {
 	fmt.Println()
 	KeyValue("Claim Code", claimCode)
 	KeyValueURL("Claim URL", claimURL)
+	if claimExpiresAt != "" {
+		KeyValue("Code expires", formatClaimExpiry(claimExpiresAt))
+	} else {
+		KeyValue("Code expires", "48 hours after registration")
+	}
 	fmt.Println()
-	fmt.Println("  Tell your human what you can now do together: create invoices,")
-	fmt.Println("  make payments, request funds, and track spending. All they need")
-	fmt.Println("  to do is claim the wallet to unlock everything.")
+	fmt.Println("  Share the claim link and code with your human. In plain words: this")
+	fmt.Println("  is a spending account they will own. After claiming, they can set how")
+	fmt.Println("  much you may spend without asking, add money, and withdraw any time.")
+	fmt.Println("  Don't make payments until they've claimed it and set an allowance.")
 	fmt.Println()
-	WarningMsg("REMEMBER: When your human confirms they claimed it, celebrate by")
-	fmt.Println("  creating a personalized sample invoice with 'botwallet paylink create'.")
-	fmt.Println("  Make it fun, relevant to them, and use --item to add line items!")
+	InfoMsg("After they claim it, thank them. You can offer to show what you can do,")
+	fmt.Println("  e.g. a small sample payment link ('botwallet paylink create') they can")
+	fmt.Println("  try, but never pressure them to pay you.")
+}
+
+// formatClaimExpiry shows a claim-code expiry as an absolute UTC time plus the
+// time left, e.g. "2026-09-29 14:03 UTC (in 47h)". Values that can't be parsed
+// are returned unchanged.
+func formatClaimExpiry(expiresAt string) string {
+	t, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		return expiresAt
+	}
+	when := t.UTC().Format("2006-01-02 15:04 UTC")
+	left := time.Until(t)
+	switch {
+	case left <= 0:
+		return when + " (expired)"
+	case left < time.Hour:
+		return fmt.Sprintf("%s (in %dm)", when, int(left.Minutes()))
+	default:
+		return fmt.Sprintf("%s (in %dh)", when, int(left.Hours()))
+	}
 }
 
 // FormatBalance formats balance information.
@@ -685,13 +768,22 @@ func FormatInfo(data map[string]interface{}) {
 		claimCode := getString(data, "claim_code")
 		claimExpires := getString(data, "claim_expires_at")
 		fmt.Println()
-		CriticalBox("⚠️ WALLET NOT CLAIMED - ACTION REQUIRED", fmt.Sprintf(`Your wallet is BLOCKED until your human owner claims it!
-
-Tell your human:
-"Please claim my wallet on Botwallet at %s using code %s"
-
-Claim Code: %s
-Expires: %s`, claimURL, claimCode, claimCode, claimExpires))
+		// The box has a fixed width and hard-wraps long lines, which used to
+		// split the claim URL in two. Keep the URL and code out of the box, each
+		// on its own line, so they can be copied intact.
+		CriticalBox("WALLET NOT CLAIMED - ACTION REQUIRED", `Your wallet is blocked until your human owner
+claims it. Send them the claim URL and code below.`)
+		fmt.Println()
+		Label.Println("  Claim URL:")
+		URL.Printf("    %s\n", claimURL)
+		Label.Println("  Claim code:")
+		Highlight.Printf("    %s\n", claimCode)
+		if claimExpires != "" {
+			KeyValue("Expires", formatClaimExpiry(claimExpires))
+		}
+		fmt.Println()
+		Label.Println("  Tell your human:")
+		fmt.Printf("    \"Please claim my wallet on Botwallet at %s using code %s\"\n", claimURL, claimCode)
 	}
 
 	// Show metadata if present
@@ -789,6 +881,21 @@ func truncateAddress(addr string) string {
 	return addr[:8] + "..." + addr[len(addr)-8:]
 }
 
+// approvalAgentHint is the agent_hint for anything waiting on the owner's
+// approval. Approving never executes anything by itself: the agent has to
+// come back and run confirm_command (which co-signs) once the owner approves.
+// what names the action, e.g. "payment" or "withdrawal".
+func approvalAgentHint(what string, data map[string]interface{}) string {
+	checkCmd := "botwallet approval status <approval_id>"
+	if approvalID := getString(data, "approval_id"); approvalID != "" {
+		checkCmd = "botwallet approval status " + approvalID
+	}
+	return fmt.Sprintf("Send the approval_url to your human owner and tell them that approving does not send the %s by itself: "+
+		"once they approve, you must come back and run confirm_command to complete it. "+
+		"Save approval_id to persistent memory and check '%s' periodically until it is approved. "+
+		"Approvals expire after 24 hours.", what, checkCmd)
+}
+
 // FormatPayInitiated formats a payment initiation response (two-step flow).
 // API returns: { status, transaction_id, reference, amount, fee, total, to, to_address, message, guard_rail, approval_url, ... }
 func FormatPayInitiated(data map[string]interface{}) {
@@ -801,7 +908,7 @@ func FormatPayInitiated(data map[string]interface{}) {
 			data["ready_to_confirm"] = true
 		case "awaiting_approval":
 			data["ready_to_confirm"] = false
-			data["agent_hint"] = "Save approval_id to persistent memory. Check status periodically until approved, then run confirm_command."
+			data["agent_hint"] = approvalAgentHint("payment", data)
 		case "rejected", "blocked":
 			data["ready_to_confirm"] = false
 		}
@@ -967,7 +1074,7 @@ func FormatPaymentsList(data map[string]interface{}) {
 	// Header
 	fmt.Printf("  %-12s %10s  %-18s  %-12s  %s\n",
 		"STATUS", "AMOUNT", "TO", "CREATED", "ID")
-	fmt.Println("  " + strings.Repeat("-", 70))
+	fmt.Println("  " + strings.Repeat("-", 94))
 
 	for _, p := range payments {
 		payment, ok := p.(map[string]interface{})
@@ -977,11 +1084,8 @@ func FormatPaymentsList(data map[string]interface{}) {
 
 		status := formatStatusShort(getString(payment, "status"))
 
-		// Short ID (8 chars for copy-ability)
+		// Full ID: pay confirm, pay cancel and pay list --id need all of it
 		txID := getString(payment, "transaction_id")
-		if len(txID) > 8 {
-			txID = txID[:8]
-		}
 
 		amount := getFloat(payment, "amount_usdc", "amount")
 		amountStr := fmt.Sprintf("$%.2f", amount)
@@ -1015,10 +1119,7 @@ func FormatPaymentsList(data map[string]interface{}) {
 			if status == "pre_approved" || status == "approved" {
 				actionable++
 				if firstTxID == "" {
-					id := getString(payment, "transaction_id")
-					if len(id) >= 8 {
-						firstTxID = id[:8]
-					}
+					firstTxID = getString(payment, "transaction_id")
 				}
 			}
 		}
@@ -1683,14 +1784,17 @@ func FormatEvents(data map[string]interface{}) {
 			Dim.Printf("    %s\n", message)
 		}
 
-		// Event type tag
+		// Event type tag and id (for --mark-read --ids)
 		Dim.Printf("    type: %s\n", eventType)
+		if id := getString(evt, "id"); id != "" {
+			Dim.Printf("    id:   %s\n", id)
+		}
 
 		fmt.Println()
 	}
 
 	if unreadCount > 0 {
-		Tip("Use 'botwallet events --mark-read' to acknowledge events.")
+		Tip("After acting on events, mark them read: botwallet events --mark-read --ids <id>,<id>")
 	}
 }
 
@@ -1739,7 +1843,7 @@ func FormatWithdraw(data map[string]interface{}) {
 	if !humanOutput {
 		data["ready_to_confirm"] = false
 		if approvalID != "" {
-			data["agent_hint"] = "Save approval_id to persistent memory. Check status periodically until approved, then run confirm_command."
+			data["agent_hint"] = approvalAgentHint("withdrawal", data)
 		}
 		JSON(data)
 		return
@@ -1750,9 +1854,11 @@ func FormatWithdraw(data map[string]interface{}) {
 	Section("Withdrawal Request")
 	KeyValue("Withdrawal ID", withdrawalID)
 	KeyValue("Approval ID", approvalID)
-	KeyValueMoney("Amount", getFloat(data, "amount_usdc", "amount"))
-	KeyValueMoney("Network Fee", getFloat(data, "network_fee_usdc", "network_fee"))
-	feeBreakdownSublines(data)
+	amount := getFloat(data, "amount_usdc", "amount")
+	KeyValueMoney("Amount", amount)
+	if fees := WithdrawalFeeLines(data, "network_fee_usdc", "network_fee"); fees > 0 {
+		KeyValueMoney("Total deducted", amount+fees)
+	}
 	KeyValueMoney("You'll Receive", getFloat(data, "you_receive_usdc", "you_receive"))
 	KeyValue("To Address", getString(data, "to_address"))
 
@@ -1805,8 +1911,7 @@ func FormatWithdrawSuccess(data map[string]interface{}) {
 		KeyValue("Transaction ID", txID)
 	}
 	KeyValueMoney("Amount", getFloat(data, "amount_usdc", "amount"))
-	KeyValueMoney("Fee", getFloat(data, "fee_usdc", "fee"))
-	feeBreakdownSublines(data)
+	WithdrawalFeeLines(data, "fee_usdc", "fee")
 	KeyValue("To Address", getString(data, "to_address"))
 
 	if solanaSig := getString(data, "solana_signature"); solanaSig != "" {
@@ -1826,6 +1931,37 @@ func FormatWithdrawSuccess(data map[string]interface{}) {
 		Label.Print("  New Balance: ")
 		Money.Printf("$%.2f", newBalance)
 		Dim.Println(" (estimate)")
+	}
+}
+
+// FormatSentUnconfirmed formats a payment or withdrawal that was sent to
+// Solana and is waiting for the network to confirm it. It is not an error:
+// it may still go through, so the output says how to check it instead of
+// sending it again. what names it, e.g. "payment".
+func FormatSentUnconfirmed(what string, data map[string]interface{}) {
+	if !humanOutput {
+		JSON(data)
+		return
+	}
+
+	InfoMsg("%s", getString(data, "message"))
+
+	Section(strings.ToUpper(what[:1]) + what[1:] + " Details")
+	KeyValue("Transaction ID", getString(data, "transaction_id"))
+	KeyValue("Status", "SENT, CONFIRMING")
+
+	if solanaSig := getString(data, "solana_signature"); solanaSig != "" {
+		Section("Solana Transaction")
+		KeyValue("Signature", truncateAddress(solanaSig))
+		if explorerURL := getString(data, "explorer_url"); explorerURL != "" {
+			KeyValueURL("View on Explorer", explorerURL)
+		}
+	}
+
+	fmt.Println()
+	WarningMsg("It may still go through. Do not send it again.")
+	if check := getString(data, "check_command"); check != "" {
+		Tip("Check it in about a minute: %s", check)
 	}
 }
 
@@ -1856,9 +1992,10 @@ func FormatApprovalStatus(data map[string]interface{}) {
 
 	switch status {
 	case "pending":
+		approvalID := getString(data, "approval_id")
 		WarningMsg("%s approval is still pending", typeLabel)
 		Section("Approval Details")
-		KeyValue("ID", getString(data, "approval_id"))
+		KeyValue("ID", approvalID)
 		KeyValue("Type", typeLabel)
 		KeyValueMoney("Amount", getFloat(data, "amount_usdc", "amount"))
 		if recipient := getString(data, "recipient"); recipient != "" {
@@ -1877,7 +2014,11 @@ func FormatApprovalStatus(data map[string]interface{}) {
 		}
 		fmt.Println()
 		Dim.Println("  Waiting for human owner to approve or reject.")
-		Dim.Println("  Check again later with: botwallet approval status <id>")
+		checkCmd := "botwallet approval status <approval_id>"
+		if approvalID != "" {
+			checkCmd = "botwallet approval status " + approvalID
+		}
+		Dim.Printf("  Check again later with: %s\n", checkCmd)
 
 	case "approved":
 		SuccessMsg("%s approved by owner!", typeLabel)
@@ -1956,7 +2097,7 @@ func FormatX402Fetch(data map[string]interface{}) {
 			data["ready_to_confirm"] = true
 		case "awaiting_approval":
 			data["ready_to_confirm"] = false
-			data["agent_hint"] = "Save approval_id to persistent memory. Check status periodically until approved, then run confirm_command."
+			data["agent_hint"] = approvalAgentHint("API payment", data)
 		case "rejected", "blocked":
 			data["ready_to_confirm"] = false
 		}

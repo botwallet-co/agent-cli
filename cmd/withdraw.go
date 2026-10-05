@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	solanago "github.com/gagliardetto/solana-go"
 	"github.com/spf13/cobra"
 
 	"github.com/botwallet-co/agent-cli/output"
@@ -26,6 +27,9 @@ STEP 1: botwallet withdraw 50.00 <address> --reason "..."
 STEP 2: After your owner approves, run:
         botwallet withdraw confirm <withdrawal_id>
         Signs the transaction locally (FROST) and submits to Solana.
+
+Use the recipient's wallet address, not a USDC token account address:
+USDC sent to a token account address may be lost.
 
 Subcommands:
   confirm   Sign and submit an approved withdrawal (Step 2)
@@ -50,21 +54,15 @@ func runWithdrawDefault(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	amount, err := strconv.ParseFloat(args[0], 64)
-	if err != nil {
-		output.ValidationError("Invalid amount: "+args[0], "Amount should be a number, e.g., 50.00")
-		return
-	}
-
-	if amount <= 0 {
-		output.ValidationError("Amount must be greater than 0", "Provide a positive number")
+	amountCents, ok := parseAmountArg(args[0], "50.00")
+	if !ok {
 		return
 	}
 
 	toAddress := args[1]
 
 	if !isValidSolanaAddress(toAddress) {
-		output.ValidationError("Invalid Solana address format", "Solana addresses are 32-44 characters of base58 (letters/digits, no 0/O/I/l)")
+		output.ValidationError("Invalid Solana address format", invalidAddressHowToFix)
 		return
 	}
 
@@ -75,7 +73,7 @@ func runWithdrawDefault(cmd *cobra.Command, args []string) {
 
 	client := getClient()
 
-	result, err := client.Withdraw(amount, toAddress, withdrawReason, withdrawIdempotencyKey)
+	result, err := client.Withdraw(centsToDollars(amountCents), toAddress, withdrawReason, withdrawIdempotencyKey)
 	if err != nil {
 		handleAPIError(err)
 		return
@@ -138,6 +136,16 @@ Withdrawals expire after 48 hours.`,
 		}
 
 		withdrawalID := args[0]
+		target := withdrawalTarget(withdrawalID)
+
+		// Load Key 1 first: if it is missing or belongs to another wallet,
+		// stop before the server starts processing the withdrawal.
+		signer, err := loadSigningWallet()
+		if err != nil {
+			exitSigningError(err, target)
+			return
+		}
+
 		client := getClient()
 
 		if output.IsHumanOutput() {
@@ -146,7 +154,7 @@ Withdrawals expire after 48 hours.`,
 
 		confirmResult, err := client.ConfirmWithdrawal(withdrawalID)
 		if err != nil {
-			handleAPIError(err)
+			exitConfirmError(err, target)
 			return
 		}
 
@@ -183,10 +191,15 @@ Withdrawals expire after 48 hours.`,
 			fmt.Println()
 		}
 
-		submitResult, err := frostSignAndSubmit(client, withdrawalID, messageB64, walletFlag)
+		intent, err := paymentIntent(confirmResult)
 		if err != nil {
-			output.APIError("SIGNING_ERROR", err.Error(),
-				"Check your wallet configuration and try again", nil)
+			exitSigningError(err, target)
+			return
+		}
+
+		submitResult, err := frostSignAndSubmit(client, withdrawalID, messageB64, signer, intent)
+		if err != nil {
+			exitSigningError(err, target)
 			return
 		}
 
@@ -229,7 +242,6 @@ Shows whether the withdrawal is:
 		status, _ := result["status"].(string)
 		wID, _ := result["withdrawal_id"].(string)
 		amount, _ := result["amount_usdc"].(float64)
-		networkFee, _ := result["network_fee_usdc"].(float64)
 		youReceived, _ := result["you_receive_usdc"].(float64)
 		toAddress, _ := result["to_address"].(string)
 		createdAt, _ := result["created_at"].(string)
@@ -238,17 +250,7 @@ Shows whether the withdrawal is:
 		output.KeyValue("Withdrawal ID", wID)
 		output.KeyValue("Status", formatWithdrawStatus(status))
 		output.KeyValueMoney("Amount", amount)
-		output.KeyValueMoney("Network Fee", networkFee)
-		if bd, ok := result["fee_breakdown"].(map[string]interface{}); ok {
-			if sf, ok := bd["account_setup_fee_usdc"].(float64); ok && sf > 0 {
-				pf := 0.0
-				if v, ok := bd["platform_fee_usdc"].(float64); ok {
-					pf = v
-				}
-				output.Dim.Printf("    Platform fee:    $%.2f\n", pf)
-				output.Dim.Printf("    Account setup:   $%.2f  (one-time for new recipient)\n", sf)
-			}
-		}
+		output.WithdrawalFeeLines(result, "network_fee_usdc")
 		output.KeyValueMoney("You Received", youReceived)
 		output.KeyValue("To Address", toAddress)
 		output.KeyValue("Created", createdAt)
@@ -292,18 +294,36 @@ Shows whether the withdrawal is:
 	},
 }
 
-// isValidSolanaAddress checks length and base58 character set.
-func isValidSolanaAddress(addr string) bool {
-	if len(addr) < 32 || len(addr) > 44 {
+// invalidAddressHowToFix explains what a valid address looks like.
+const invalidAddressHowToFix = "A Solana address is 32-44 base58 characters (no 0, O, I or l) that decode to 32 bytes. Use the recipient's wallet address, not a token account address"
+
+// looksLikeSolanaAddress reports whether s has the length and characters of
+// a Solana address. The server treats such a recipient as an address, not
+// a username.
+func looksLikeSolanaAddress(s string) bool {
+	if len(s) < 32 || len(s) > 44 {
 		return false
 	}
 	const base58Chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-	for _, c := range addr {
+	for _, c := range s {
 		if !strings.ContainsRune(base58Chars, c) {
 			return false
 		}
 	}
 	return true
+}
+
+// isValidSolanaAddress reports whether addr looks like a Solana address and
+// decodes to exactly 32 bytes. Addresses off the ed25519 curve are allowed:
+// program-owned vaults (multisigs, escrows) are valid destinations. Telling
+// a token account from a wallet takes a Solana lookup, so that check is the
+// server's.
+func isValidSolanaAddress(addr string) bool {
+	if !looksLikeSolanaAddress(addr) {
+		return false
+	}
+	_, err := solanago.PublicKeyFromBase58(addr)
+	return err == nil
 }
 
 func formatWithdrawStatus(status string) string {

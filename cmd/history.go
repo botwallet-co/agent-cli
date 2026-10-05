@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	"github.com/botwallet-co/agent-cli/output"
@@ -19,17 +21,16 @@ var historyCmd = &cobra.Command{
 	Long: `View your complete transaction history.
 
 Shows all transactions including:
-- Deposits (money in)
-- Payments (money out to merchants/bots)
-- Withdrawals (money out to blockchain)
-- Adjustments (credits/debits)
+- Deposits and payments received (money in)
+- Payments, x402 payments and withdrawals (money out)
+- Fees, refunds and adjustments (credits/debits)
 
-Filter shortcuts:
-  --type in     Deposits only
-  --type out    Payments and withdrawals
+Filters:
+  --type in     Money in: deposits, payments received, refunds
+  --type out    Money out: payments, x402 payments, withdrawals, fees
+  --type all    Everything, including adjustments (default)
 
-Specific types:
-  --type payment | deposit | withdrawal | adjustment
+Each transaction's "type" field says which kind it is.
 
 Note: 'transactions' is an alias for 'history'.`,
 	Example: `  botwallet history
@@ -40,9 +41,20 @@ Note: 'transactions' is an alias for 'history'.`,
 			return
 		}
 
+		// The server filters by direction only. Any other value used to come
+		// back as the full, unfiltered list.
+		txType := strings.ToLower(strings.TrimSpace(historyType))
+		switch txType {
+		case "", "all", "in", "out":
+		default:
+			output.ValidationError("Unknown --type: "+historyType,
+				"Use in, out or all. To find one kind (payment, deposit, withdrawal, ...), list all and read each transaction's type field")
+			return
+		}
+
 		client := getClient()
 
-		result, err := client.Transactions(historyType, historyLimit, historyOffset)
+		result, err := client.Transactions(txType, historyLimit, historyOffset)
 		if err != nil {
 			handleAPIError(err)
 			return
@@ -53,7 +65,7 @@ Note: 'transactions' is an alias for 'history'.`,
 }
 
 func init() {
-	historyCmd.Flags().StringVar(&historyType, "type", "", "Filter: in, out, payment, deposit, withdrawal, adjustment, all (default: all)")
+	historyCmd.Flags().StringVar(&historyType, "type", "", "Filter: in (money in), out (money out), all (default: all)")
 	historyCmd.Flags().IntVar(&historyLimit, "limit", 20, "Maximum results to return")
 	historyCmd.Flags().IntVar(&historyOffset, "offset", 0, "Offset for pagination")
 }

@@ -83,11 +83,34 @@ func IsSolanaNetwork(network string) bool {
 		strings.HasPrefix(net, "solana:")
 }
 
+// Solana clusters Botwallet pays on, and their CAIP-2 ids (genesis hash
+// prefixes), lowercased.
+const (
+	clusterMainnet = "mainnet"
+	clusterDevnet  = "devnet"
+
+	caip2SolanaMainnet = "solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp"
+	caip2SolanaDevnet  = "solana:etwtrabzayq6imfeykouru166vu2xqa1"
+)
+
+// solanaCluster returns clusterMainnet or clusterDevnet for a network name
+// as x402 writes it, or "" for any other network (including other Solana
+// clusters such as testnet).
+func solanaCluster(network string) string {
+	net := strings.ToLower(network)
+	switch {
+	case net == caip2SolanaDevnet || (strings.HasPrefix(net, "solana") && strings.Contains(net, "devnet")):
+		return clusterDevnet
+	case net == "solana" || net == "solana-mainnet" || net == caip2SolanaMainnet:
+		return clusterMainnet
+	}
+	return ""
+}
+
 // NormalizeSolanaNetwork converts CAIP-2 format (solana:5eykt4U...) to "solana"
 // for server-side compatibility, preserving devnet if specified.
 func NormalizeSolanaNetwork(network string) string {
-	net := strings.ToLower(network)
-	if net == "solana-devnet" || strings.Contains(net, "devnet") {
+	if solanaCluster(network) == clusterDevnet {
 		return "solana-devnet"
 	}
 	if IsSolanaNetwork(network) {
@@ -97,15 +120,12 @@ func NormalizeSolanaNetwork(network string) string {
 }
 
 // FilterSolanaCompatible returns only resources that have at least one
-// Solana-compatible payment option.
+// payment option Botwallet can pay (USDC on Solana, see IsPayableOption).
 func FilterSolanaCompatible(items []DiscoveredResource) []DiscoveredResource {
 	var result []DiscoveredResource
-	for _, item := range items {
-		for _, opt := range item.Accepts {
-			if IsSolanaNetwork(opt.Network) {
-				result = append(result, item)
-				break
-			}
+	for i := range items {
+		if HasSolanaOption(&items[i]) {
+			result = append(result, items[i])
 		}
 	}
 	return result
@@ -157,12 +177,12 @@ func ResourceDescription(item *DiscoveredResource) string {
 	return item.Resource
 }
 
-// ResourceBestPrice returns the lowest price across all payment options
-// for a discovered resource, preferring Solana options. Returns empty
-// string if no price available.
+// ResourceBestPrice returns the price of the first option Botwallet can pay
+// (USDC on Solana), else of the first option. Returns empty string if no
+// price available.
 func ResourceBestPrice(item *DiscoveredResource) (price string, network string) {
-	for _, opt := range item.Accepts {
-		if IsSolanaNetwork(opt.Network) {
+	for i := range item.Accepts {
+		if opt := &item.Accepts[i]; IsPayableOption(opt) {
 			return opt.GetAmount(), opt.Network
 		}
 	}
@@ -192,10 +212,11 @@ func RawAmountToUSDC(raw string) float64 {
 	return val / 1_000_000
 }
 
-// HasSolanaOption returns true if the resource accepts payment on Solana.
+// HasSolanaOption returns true if the resource accepts a payment Botwallet
+// can make: USDC on Solana (IsPayableOption).
 func HasSolanaOption(item *DiscoveredResource) bool {
-	for _, opt := range item.Accepts {
-		if IsSolanaNetwork(opt.Network) {
+	for i := range item.Accepts {
+		if IsPayableOption(&item.Accepts[i]) {
 			return true
 		}
 	}

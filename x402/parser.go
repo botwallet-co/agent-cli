@@ -14,6 +14,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/botwallet-co/agent-cli/solana"
 )
 
 // Parse402Response extracts x402 payment requirements from a 402 HTTP response.
@@ -72,19 +74,37 @@ func Parse402Response(resp *http.Response) (*PaymentRequired, error) {
 	return &pr, nil
 }
 
-// FindSolanaOption returns the first Solana-compatible payment option, or nil.
-// Supports both short names ("solana") and CAIP-2 format ("solana:5eykt4U...").
+// FindSolanaOption returns the first payment option Botwallet can pay
+// (IsPayableOption), or nil. Networks can be short names ("solana") or
+// CAIP-2 ids ("solana:5eykt4U...").
 func FindSolanaOption(pr *PaymentRequired) *PaymentOption {
 	if pr == nil {
 		return nil
 	}
 	for i := range pr.Accepts {
 		opt := &pr.Accepts[i]
-		if IsSolanaNetwork(opt.Network) {
+		if IsPayableOption(opt) {
 			return opt
 		}
 	}
 	return nil
+}
+
+// IsPayableOption reports whether Botwallet can pay opt: the "exact" scheme,
+// on Solana mainnet or devnet, priced in the USDC mint Botwallet pays with
+// there. An amount in any other asset is in that asset's own units, so
+// paying it as USDC base units would charge the wrong amount.
+func IsPayableOption(opt *PaymentOption) bool {
+	if opt == nil || !strings.EqualFold(opt.Scheme, "exact") {
+		return false
+	}
+	switch solanaCluster(opt.Network) {
+	case clusterMainnet:
+		return opt.Asset == solana.USDCMintMainnet
+	case clusterDevnet:
+		return opt.Asset == solana.USDCMintDevnet
+	}
+	return false
 }
 
 // AvailableNetworks returns a deduplicated list of networks in the 402 response.
@@ -108,6 +128,8 @@ func AvailableNetworks(pr *PaymentRequired) []string {
 func ToSummary(opt *PaymentOption) PaymentSummary {
 	return PaymentSummary{
 		Network:     opt.Network,
+		Scheme:      opt.Scheme,
+		Asset:       opt.Asset,
 		PriceUSDC:   opt.GetAmount(),
 		PayTo:       opt.PayTo,
 		Description: opt.Description,

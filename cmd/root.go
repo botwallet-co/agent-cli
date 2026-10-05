@@ -8,8 +8,11 @@
 package cmd
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -34,11 +37,48 @@ var (
 	humanFlag   bool   // Enable human-readable output (default is JSON for bots)
 )
 
-// SetVersionInfo sets version information from main
+// SetVersionInfo sets version information from main, and the version the
+// API client sends in its User-Agent.
 func SetVersionInfo(v, c, d string) {
+	v = buildVersion(v, debug.ReadBuildInfo)
 	version = v
 	commit = c
 	date = d
+	api.SetVersion(v)
+	// botwallet --version prints what 'botwallet version' prints.
+	rootCmd.Version = v
+	rootCmd.SetVersionTemplate("{{botwalletVersion}}")
+}
+
+// buildVersion returns the version to report. Release builds set v with
+// -ldflags. 'go install ...@version' sets no ldflags (v is "dev"), so it
+// falls back to the module version Go records in the binary, without the
+// leading "v" so it reads like a release version (0.1.0-beta.12).
+func buildVersion(v string, readBuildInfo func() (*debug.BuildInfo, bool)) string {
+	if v != "" && v != "dev" {
+		return v
+	}
+	if info, ok := readBuildInfo(); ok && info != nil {
+		if mv := info.Main.Version; mv != "" && mv != "(devel)" {
+			return strings.TrimPrefix(mv, "v")
+		}
+	}
+	return "dev"
+}
+
+// versionInfo is the output of 'botwallet version' and --version: JSON, or
+// text with --human. --version is answered before PersistentPreRun runs,
+// so it reads the --human flag directly.
+func versionInfo() string {
+	if humanFlag {
+		return fmt.Sprintf("Botwallet CLI v%s\n  Commit: %s\n  Built:  %s\n", version, commit, date)
+	}
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(map[string]string{"version": version, "commit": commit, "date": date})
+	return b.String()
 }
 
 // rootCmd is the base command
@@ -76,7 +116,23 @@ Utilities:
   docs      Full documentation`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		output.SetHumanOutput(humanFlag)
+		requireConfigDir(cmd)
 	},
+}
+
+// requireConfigDir stops early when there is no safe folder for wallet keys
+// (no HOME and no BOTWALLET_HOME), instead of failing halfway through a
+// command. Commands that never touch local files are exempt.
+func requireConfigDir(cmd *cobra.Command) {
+	switch cmd.Name() {
+	case "version", "docs", "help", "completion":
+		return
+	}
+	if _, err := config.ResolveConfigDir(); err != nil {
+		output.APIError("NO_HOME_DIR", err.Error(),
+			"Set HOME, or set "+config.ConfigDirEnv+" to the absolute path of a private folder for Botwallet keys", nil)
+		os.Exit(1)
+	}
 }
 
 // Execute runs the CLI
@@ -106,6 +162,8 @@ func Execute() error {
 }
 
 func init() {
+	cobra.AddTemplateFunc("botwalletVersion", versionInfo)
+
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&apiKeyFlag, "api-key", "", "API key (or set BOTWALLET_API_KEY)")
 	rootCmd.PersistentFlags().StringVar(&walletFlag, "wallet", "", "Use specific local wallet (see 'botwallet wallet list')")
@@ -154,6 +212,7 @@ func init() {
 
 	// Utilities
 	rootCmd.AddCommand(lookupCmd)
+	rootCmd.AddCommand(balanceCmd)
 	rootCmd.AddCommand(pingCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(docsCmd)
@@ -230,19 +289,25 @@ before making a payment.`,
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print version information",
+	Short: "Print version information (also: botwallet --version)",
 	Run: func(cmd *cobra.Command, args []string) {
-		if output.IsHumanOutput() {
-			fmt.Printf("Botwallet CLI v%s\n", version)
-			fmt.Printf("  Commit: %s\n", commit)
-			fmt.Printf("  Built:  %s\n", date)
-			return
-		}
-		output.JSON(map[string]string{
-			"version": version,
-			"commit":  commit,
-			"date":    date,
-		})
+		fmt.Print(versionInfo())
+	},
+}
+
+// =============================================================================
+// Balance Shortcut
+// =============================================================================
+
+// balanceCmd is a hidden shortcut for 'wallet balance', which agents often
+// try first as 'botwallet balance'.
+var balanceCmd = &cobra.Command{
+	Use:    "balance",
+	Short:  "Same as 'wallet balance'",
+	Hidden: true,
+	Args:   cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		walletBalanceCmd.Run(cmd, args)
 	},
 }
 
@@ -250,16 +315,48 @@ var versionCmd = &cobra.Command{
 // Helper Functions
 // =============================================================================
 
+// currentWallet returns the wallet this command acts as (see
+// config.ResolveWallet). If --wallet is unknown or conflicts with the API
+// key, it prints the error and exits.
+func currentWallet() *config.ResolvedWallet {
+	w, err := config.ResolveWallet(apiKeyFlag, walletFlag)
+	if err != nil {
+		exitWalletError(err)
+	}
+	return w
+}
+
+// exitWalletError prints an error about which wallet to use, or about the
+// local wallet files, and exits.
+func exitWalletError(err error) {
+	var notFound *config.WalletNotFoundError
+	var conflict *config.WalletConflictError
+	var noLocal *config.NoLocalWalletError
+
+	code, howToFix := "CONFIG_ERROR", "Check "+config.ConfigPath()
+	switch {
+	case errors.As(err, &notFound):
+		code, howToFix = "WALLET_NOT_FOUND", "Use 'botwallet wallet list' to see available wallets"
+	case errors.As(err, &conflict):
+		code = "WALLET_CONFLICT"
+		howToFix = fmt.Sprintf("Use one wallet: drop --wallet to use the key from %s, or remove that key to use --wallet %s",
+			conflict.KeySource, conflict.Wallet)
+	case errors.As(err, &noLocal):
+		code = "NO_LOCAL_WALLET"
+		howToFix = fmt.Sprintf("Use --wallet <name> for a wallet in 'botwallet wallet list' (and remove the key from %s), "+
+			"or import this wallet with 'botwallet wallet import'", noLocal.KeySource)
+	case errors.Is(err, config.ErrNoWallet):
+		code, howToFix = "NO_WALLET", "Run 'botwallet wallet create' first, or use --wallet flag"
+	case errors.Is(err, config.ErrNoHomeDir):
+		code, howToFix = "NO_HOME_DIR", "Set HOME, or set "+config.ConfigDirEnv+" to the absolute path of a private folder for Botwallet keys"
+	}
+	output.APIError(code, err.Error(), howToFix, nil)
+	os.Exit(1)
+}
+
 // getClient creates an API client with the configured API key
 func getClient() *api.Client {
-	apiKey, err := config.GetAPIKeyWithWallet(apiKeyFlag, walletFlag)
-	if err != nil {
-		output.APIError("WALLET_NOT_FOUND", err.Error(),
-			"Use 'botwallet wallet list' to see available wallets",
-			nil,
-		)
-		os.Exit(1)
-	}
+	apiKey := currentWallet().APIKey
 	baseURL := config.GetBaseURL(baseURLFlag)
 
 	if baseURL != "" {
@@ -281,16 +378,12 @@ func getClientNoAuth() *api.Client {
 // requireAPIKey ensures an API key is available
 // Returns true if API key exists, false if missing (and outputs error)
 func requireAPIKey() bool {
-	apiKey, err := config.GetAPIKeyWithWallet(apiKeyFlag, walletFlag)
-	if err != nil {
-		output.APIError("WALLET_NOT_FOUND", err.Error(),
-			"Use 'botwallet wallet list' to see available wallets",
-			nil,
-		)
-		os.Exit(1)
-		return false
-	}
-	if apiKey == "" {
+	w := currentWallet()
+	if w.APIKey == "" {
+		if w.ConfigErr != nil {
+			exitWalletError(w.ConfigErr)
+			return false
+		}
 		wallets, _ := config.ListWallets()
 
 		howToFix := "Set BOTWALLET_API_KEY environment variable, use --api-key flag, or create a wallet"
@@ -321,7 +414,8 @@ func requireAPIKey() bool {
 
 // handleAPIError handles API errors and outputs them appropriately
 func handleAPIError(err error) {
-	if apiErr, ok := err.(*api.APIError); ok {
+	var apiErr *api.APIError
+	if errors.As(err, &apiErr) {
 		// Provide default how_to_fix if API didn't supply one
 		howToFix := apiErr.HowToFix
 		if howToFix == "" {
@@ -362,6 +456,8 @@ func getDefaultHowToFix(code string, details map[string]interface{}) string {
 		return "Use 'botwallet lookup <username>' to verify the recipient exists"
 	case "VALIDATION_ERROR":
 		return "Check command parameters and try again"
+	case "INVALID_STATUS":
+		return "Check its current status first ('botwallet pay list --id <id>' for a payment, 'botwallet withdraw get <id>' for a withdrawal)"
 	case "UNAUTHORIZED":
 		return "Check your API key is correct. Use --api-key flag or set BOTWALLET_API_KEY"
 	case "DAILY_LIMIT_EXCEEDED":
@@ -384,6 +480,21 @@ func getDefaultHowToFix(code string, details map[string]interface{}) string {
 		return "Your wallet needs to be claimed by a human owner. Run 'botwallet wallet info' to get the claim URL and code, then ask your human to claim it."
 	case "WALLET_ALREADY_CLAIMED":
 		return "This wallet is already claimed. Ask your owner to release it from their Human Portal first."
+	// Codes newer servers send. Their replies carry their own how_to_fix;
+	// these are for one that does not.
+	case "WALLET_SUSPENDED":
+		return "Your owner has frozen this wallet, so it can't send money. Ask them to unfreeze it in the Botwallet dashboard, then run the same command again"
+	case "IDEMPOTENCY_KEY_CONFLICT":
+		return "If you are retrying the same request, run it again with the same arguments and --idempotency-key to get its result. " +
+			"Otherwise use a new, unique key (for example a UUID) for each payment or withdrawal"
+	case "DEPRECATED":
+		return "Botwallet no longer supports what this version of the CLI asked for. Update the CLI (npm install -g @botwallet/agent-cli@latest), then try again"
+	case "SIGNING_IN_PROGRESS", "SUBMISSION_UNCONFIRMED":
+		check := "'botwallet pay list --id <id>' for a payment, 'botwallet withdraw get <id>' for a withdrawal"
+		if c, _ := details["check_command"].(string); c != "" {
+			check = "'" + c + "'"
+		}
+		return "It is on its way and may still go through, so do not pay again. Check its status in about a minute with " + check
 	default:
 		return ""
 	}

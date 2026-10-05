@@ -48,8 +48,8 @@ curl -fsSL https://botwallet.co/install.sh | sh
 # Windows (PowerShell)
 iwr https://botwallet.co/install.ps1 | iex
 
-# From source
-go install github.com/botwallet-co/agent-cli@latest
+# From source (installs a binary named botwallet)
+go install github.com/botwallet-co/agent-cli/cmd/botwallet@latest
 ```
 
 ## Quick Start
@@ -83,7 +83,7 @@ botwallet pay confirm <transaction_id>       # Step 2: FROST sign & submit
 | `wallet owner <email>` | Update pledged owner (unclaimed only) |
 | `wallet rename <name>` | Rename display name (username unchanged) |
 | `wallet backup` | Back up Key 1 (two-step safety process) |
-| `wallet export -o file.bwlt` | Export wallet to encrypted .bwlt file |
+| `wallet export -o file.bwlt` | Export wallet to move it to another machine (file works for 24 hours; not a backup) |
 | `wallet import file.bwlt` | Import wallet from .bwlt file |
 
 ### Payments (`botwallet pay ...`) — Two-Step
@@ -145,7 +145,8 @@ Use this to poll after any action returns `awaiting_approval`. When status is `a
 | `events --all` | Include already-read events |
 | `events --limit 25` | Max events to return (default: 10) |
 | `events --since <ISO-timestamp>` | Only events after this time |
-| `events --mark-read` | Mark all as read |
+| `events --mark-read --ids <id>,<id>` | Mark the events you handled as read |
+| `events --mark-read` | Mark every unread event as read |
 
 Event types: `approval_resolved`, `deposit_received`, `payment_completed`, `fund_requested`, `fund_request_funded`, `wallet_pledged`, `guardrails_updated`, `x402_payment_completed`, `x402_payment_failed`
 
@@ -167,7 +168,7 @@ Fetch flags: `--method`, `--body`, `--header` (repeatable)
 ### Utilities
 | Command | Description |
 |---------|-------------|
-| `history` | Transaction history (`--type in/out/payment/deposit/withdrawal`) |
+| `history` | Transaction history (`--type in/out/all`) |
 | `limits` | Spending limits and guard rails |
 | `approvals` | List all pending owner approvals |
 | `approval status <id>` | Check a specific approval's status |
@@ -186,6 +187,16 @@ Credentials auto-saved on `wallet create`. Priority order:
 2. `BOTWALLET_API_KEY` / `BW_API_KEY` env var
 3. `--wallet` flag (selects from config)
 4. Default wallet from `~/.botwallet/config.json`
+
+A command always acts as one wallet: the one its API key belongs to, and it
+signs with that wallet's Key 1. If `--wallet` and a key from `--api-key` or the
+environment point at different wallets, the CLI stops with `WALLET_CONFLICT`
+instead of picking one.
+
+Keys and config live in `~/.botwallet/`. Set `BOTWALLET_HOME` to an absolute
+path to use another folder (useful in containers without `HOME`). If neither
+`HOME` nor `BOTWALLET_HOME` is set, the CLI stops with `NO_HOME_DIR` instead of
+writing keys into the current directory.
 
 ## Output Modes
 
@@ -248,12 +259,22 @@ botwallet wallet use my-other-wallet
 
 BotWallet uses **FROST (Flexible Round-Optimized Schnorr Threshold) 2-of-2 signatures**. During wallet creation, a Distributed Key Generation ceremony produces two key shares:
 
-- **S1** (agent's share): stored locally at `~/.botwallet/seeds/<wallet>.seed`
-- **S2** (server's share): held by BotWallet, never sent to the agent
+- **Key 1** (the agent's share): stored locally at `~/.botwallet/seeds/<wallet>.seed`
+- **Key 2** (the server's share): held by BotWallet, never sent to the agent
 
 The full private key never exists anywhere. Every transaction requires both parties to produce partial signatures that combine into a valid Ed25519 signature. Neither the agent nor BotWallet can move funds alone.
 
+Before Key 1 signs, the CLI decodes the Solana transaction and checks it against the payment it was shown. It signs only a USDC transfer from this wallet into the recipient's associated (standard) USDC account for that amount, plus at most the quoted fee. Anything else (another recipient, a larger amount, extra instructions) stops with `TRANSACTION_MISMATCH` and nothing is signed. The [MCP server](https://github.com/botwallet-co/mcp) and the signing page apply the same rules.
+
 All payments settle in **USDC on Solana** — a dollar-pegged stablecoin. `10.00` = $10.00.
+
+## Pending, Frozen and Repeated Payments
+
+**Sent, not confirmed yet.** `pay confirm` and `withdraw confirm` wait for Solana to confirm the transfer. If the network has not confirmed it in time, the command still exits 0 and prints it as pending, not as an error: `"status": "pending"`, `"sent": true`, its `solana_signature` and a `check_command`. It may still go through, so do not create a new payment for it. Run the `check_command` (`pay list --id <id>` or `withdraw get <id>`) in about a minute: it shows `completed` or `failed`. `SIGNING_IN_PROGRESS` (it is being sent right now) and `SUBMIT_STATUS_UNKNOWN` (no answer came back) call for the same: check, don't pay again.
+
+**Frozen wallet.** The owner can freeze the wallet in the Botwallet dashboard. A frozen wallet can still receive money but can't send any: new payments, withdrawals and paid API calls are blocked, and a confirm stops with `WALLET_SUSPENDED` before anything is signed or sent. A payment or withdrawal approved before the freeze is kept: once the owner unfreezes the wallet, run the same confirm command again (before it expires).
+
+**Retrying a request.** `pay` and `withdraw` take `--idempotency-key`. Sending a key again returns the payment or withdrawal first made with it (`"idempotent": true`), whatever the other arguments, and never makes a second one. Use a new, unique key (for example a UUID) for each new payment. A key already used for another kind of request, or for one that is still being created, stops with `IDEMPOTENCY_KEY_CONFLICT`.
 
 ## Building from Source
 

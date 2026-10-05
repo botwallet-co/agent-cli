@@ -157,7 +157,7 @@ func runX402Fetch(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// Find Solana-compatible payment option
+	// Find a payment option in USDC on Solana
 	solOpt := x402.FindSolanaOption(pr)
 	if solOpt == nil {
 		networks := x402.AvailableNetworks(pr)
@@ -165,16 +165,16 @@ func runX402Fetch(cmd *cobra.Command, args []string) {
 			"payment_required":   true,
 			"url":                targetURL,
 			"compatible":         false,
-			"reason":             "No Solana payment option available. Your wallet supports Solana only.",
+			"reason":             "No option to pay in USDC on Solana. Botwallet pays in USDC on Solana only.",
 			"available_networks": networks,
 			"options":            x402.AllSummaries(pr),
 		}
 		if !output.IsHumanOutput() {
 			output.JSON(result)
 		} else {
-			output.WarningMsg("API requires payment but no Solana option is available")
+			output.WarningMsg("API requires payment but offers no option to pay in USDC on Solana")
 			output.KeyValue("Available networks", strings.Join(networks, ", "))
-			output.Tip("Your Botwallet supports Solana USDC payments only.")
+			output.Tip("Botwallet pays in USDC on Solana only.")
 		}
 		return
 	}
@@ -190,6 +190,8 @@ func runX402Fetch(cmd *cobra.Command, args []string) {
 		solOpt.GetAmount(),
 		x402.NormalizeSolanaNetwork(solOpt.Network),
 		x402FetchMethod,
+		solOpt.Asset,
+		solOpt.Scheme,
 	)
 	if err != nil {
 		handleAPIError(err)
@@ -241,6 +243,16 @@ func runX402FetchConfirm(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	target := x402Target(fetchID)
+
+	// Load Key 1 first: if it is missing or belongs to another wallet,
+	// stop before the server starts processing the payment.
+	signer, err := loadSigningWallet()
+	if err != nil {
+		exitSigningError(err, target)
+		return
+	}
+
 	client := getClient()
 
 	if output.IsHumanOutput() {
@@ -250,7 +262,7 @@ func runX402FetchConfirm(cmd *cobra.Command, args []string) {
 	// Step 2a: Server builds Solana transaction
 	confirmResult, err := client.X402Confirm(fetchID)
 	if err != nil {
-		handleAPIError(err)
+		exitConfirmError(err, target)
 		return
 	}
 
@@ -286,18 +298,23 @@ func runX402FetchConfirm(cmd *cobra.Command, args []string) {
 		fmt.Println()
 	}
 
-	// Step 2b: FROST threshold signing (returns signed tx, does NOT submit to Solana)
-	signResult, err := frostSignForX402(client, transactionID, messageB64, walletFlag)
+	intent, err := x402Intent(confirmResult)
 	if err != nil {
-		output.APIError("SIGNING_ERROR", err.Error(),
-			"Check your wallet configuration and try again", nil)
+		exitSigningError(err, target)
+		return
+	}
+
+	// Step 2b: FROST threshold signing (returns signed tx, does NOT submit to Solana)
+	signResult, err := frostSignForX402(client, transactionID, messageB64, signer, intent)
+	if err != nil {
+		exitSigningError(err, target)
 		return
 	}
 
 	signedTxB64, ok := signResult["signed_transaction"].(string)
 	if !ok || signedTxB64 == "" {
 		output.APIError("SIGNING_ERROR", "Server did not return a signed transaction",
-			"The signing may have failed. Try again with 'x402 fetch'", nil)
+			target.retryAdvice(), nil)
 		return
 	}
 

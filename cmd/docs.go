@@ -24,7 +24,7 @@ Payment infrastructure for AI agents. Hold, spend, and earn money autonomously.
 
 After registering, your wallet is BLOCKED until a human claims it.
 Tell your human: "Please claim my wallet at [claim_url] using code [claim_code]"
-Only wallet info and wallet owner work before claiming.
+Only wallet info, wallet owner and wallet rename work before claiming.
 
 
 ## Commands
@@ -39,7 +39,7 @@ Only wallet info and wallet owner work before claiming.
     wallet owner <email>                       Change pledged owner (unclaimed only)
     wallet rename <new-name>                   Rename display name (username stays the same)
     wallet backup                              Back up Key 1 (two-step safety process)
-    wallet export -o <file.bwlt>               Export wallet to encrypted .bwlt file
+    wallet export -o <file.bwlt>               Export wallet to move it to another machine (file works 24h, not a backup)
     wallet import <file.bwlt>                  Import wallet from .bwlt file
 
     'register' is a top-level alias for 'wallet create'.
@@ -108,7 +108,8 @@ Only wallet info and wallet owner work before claiming.
     events --all                               Include already-read events
     events --limit 25                          Max events to return (default: 10)
     events --since "2026-02-19T00:00:00Z"      Only events after this timestamp
-    events --mark-read                         Mark all as read
+    events --mark-read --ids <id>,<id>         Mark the events you handled as read
+    events --mark-read                         Mark every unread event as read (even unseen ones)
 
     'notifications' is an alias for 'events'.
 
@@ -117,7 +118,7 @@ Only wallet info and wallet owner work before claiming.
            x402_payment_completed, x402_payment_failed
 
 ### Utilities
-    history                                    Transaction history (--type in/out/payment/deposit/withdrawal)
+    history                                    Transaction history (--type in/out/all)
     limits                                     Spending limits & guard rails
     approvals                                  Pending owner approvals (list all)
     approval status <id>                       Check a specific approval's status
@@ -201,14 +202,40 @@ JSON by default. Use --human flag for formatted terminal output.
     Error:   { "error": "CODE", "message": "...", "how_to_fix": "..." }
 
 
+## Pending, Frozen and Repeated Payments
+
+Never pay again just because a confirm did not say "completed".
+
+- "status": "pending" with "sent": true (exit code 0): the payment or
+  withdrawal was sent to Solana and is not confirmed yet. It may still go
+  through, so do not create a new one. Run its check_command in about a
+  minute; it shows completed or failed. SIGNING_IN_PROGRESS and
+  SUBMIT_STATUS_UNKNOWN call for the same.
+- WALLET_SUSPENDED: the owner froze the wallet. It can receive money but
+  can't send any, and nothing was sent. Once the owner unfreezes it in the
+  Botwallet dashboard, run the same command again (for a confirm, the same
+  confirm: do not create a new payment).
+- --idempotency-key: the same key returns the payment or withdrawal first
+  made with it ("idempotent": true) instead of paying twice. Use a new key
+  for each new payment; IDEMPOTENCY_KEY_CONFLICT means the key was already
+  used for something else.
+
+
 ## Security: FROST Threshold Signing
 
 - Agent holds key share S1 locally (~/.botwallet/seeds/<wallet>.seed)
 - Server holds key share S2 (never sent to agent)
 - Neither can sign alone — both cooperate for every transaction
+- Before S1 signs, the CLI decodes the transaction: it signs only a USDC
+  transfer from this wallet into the recipient's associated (standard) USDC
+  account, for the amount shown, plus at most the quoted fee (otherwise
+  TRANSACTION_MISMATCH, nothing signed)
 - Full private key never exists anywhere
 - API key stored in ~/.botwallet/config.json
 - Use 'wallet backup' to export S1 (two-step safety process)
+- Set BOTWALLET_HOME (absolute path) to keep these files in another folder.
+  Without it, a missing HOME is an error; keys are never written to the
+  current directory.
 
 
 ## Tips
@@ -217,7 +244,7 @@ JSON by default. Use --human flag for formatted terminal output.
 2. Use --owner on wallet create so it appears in your human's portal
 3. When a command returns awaiting_approval, save the approval_id to
    persistent memory. Poll with 'approval status <id>' until resolved.
-4. After processing events, run 'events --mark-read' to stay clean
+4. After processing events, run 'events --mark-read --ids <ids you handled>'
 5. Paylinks expire — monitor with 'paylink get'
 6. Use --item flags for itemized invoices on paylinks
 7. Use 'paylink send' to deliver a paylink to an email or bot (--to @bot-name)
@@ -266,7 +293,7 @@ func getDocsJSON() map[string]interface{} {
 		"authentication": map[string]interface{}{
 			"method":      "api_key",
 			"recommended": "Credentials auto-saved on wallet create. Use --wallet flag for multiple wallets.",
-			"config_dir":  "~/.botwallet/",
+			"config_dir":  "~/.botwallet/ (override with BOTWALLET_HOME, an absolute path)",
 			"files": map[string]string{
 				"config.json":         "Wallet registry and API keys (0600)",
 				"seeds/<wallet>.seed": "Key shares - S1 (0600)",
@@ -276,6 +303,7 @@ func getDocsJSON() map[string]interface{} {
 				"2. BOTWALLET_API_KEY env var",
 				"3. --wallet flag (selects wallet from config)",
 				"4. Default wallet from config file",
+				"--wallet together with a key from 1 or 2 must name the same wallet, or the command stops with WALLET_CONFLICT",
 			},
 			"security_model": "2-of-2 threshold signing (FROST). Agent holds S1 locally, server holds S2. Neither can sign alone. Key shares are NEVER displayed during registration.",
 		},
@@ -339,7 +367,7 @@ func getDocsJSON() map[string]interface{} {
 					},
 					{
 						"name":        "export",
-						"description": "Export wallet to an encrypted .bwlt file",
+						"description": "Export wallet to a .bwlt file to move it to another machine. The file works for up to 5 imports within 24 hours and is not a backup",
 						"flags":       []string{"-o/--output (required)"},
 						"example":     "botwallet wallet export -o wallet.bwlt",
 					},
@@ -421,7 +449,7 @@ func getDocsJSON() map[string]interface{} {
 				"name":        "paylink",
 				"description": "Payment links (earning) - create shareable payment URLs to get paid by anyone",
 				"commands": []map[string]interface{}{
-				{
+					{
 						"name":        "create",
 						"description": "Create a payment link to receive money",
 						"args":        []string{"amount (optional when using --item)"},
@@ -526,8 +554,13 @@ func getDocsJSON() map[string]interface{} {
 					"example":     "botwallet events",
 				},
 				{
+					"name":        "events --mark-read --ids",
+					"description": "Mark the events you handled as read (ids from the events listing)",
+					"example":     "botwallet events --mark-read --ids <id>,<id>",
+				},
+				{
 					"name":        "events --mark-read",
-					"description": "Mark all events as read",
+					"description": "Mark every unread event as read, including ones not listed yet. With --type/--since/--limit, only the unread events those filters list",
 					"example":     "botwallet events --mark-read",
 				},
 			},
@@ -571,7 +604,7 @@ func getDocsJSON() map[string]interface{} {
 				"name":        "events",
 				"description": "Check wallet notifications and events",
 				"aliases":     []string{"notifications"},
-				"flags":       []string{"--type", "--limit", "--all", "--since", "--mark-read"},
+				"flags":       []string{"--type", "--limit", "--all", "--since", "--mark-read", "--ids"},
 				"example":     "botwallet events",
 			},
 			{
@@ -646,7 +679,7 @@ func getDocsJSON() map[string]interface{} {
 			"check_for_updates": {
 				"botwallet events",
 				"# See approval_resolved, deposit_received, payment_completed, etc.",
-				"# After processing: botwallet events --mark-read",
+				"# After processing: botwallet events --mark-read --ids <id>,<id>",
 			},
 			"approval_flow": {
 				"botwallet pay @merchant 500.00",

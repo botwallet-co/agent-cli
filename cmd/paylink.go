@@ -99,18 +99,12 @@ ITEMIZED INVOICE (optional --item flag, repeatable):
 			return
 		}
 
-		var amount float64
+		var amountCents int64
 		hasAmount := len(args) > 0
 
 		if hasAmount {
-			var err error
-			amount, err = strconv.ParseFloat(args[0], 64)
-			if err != nil {
-				output.ValidationError("Invalid amount: "+args[0], "Amount should be a number, e.g., 10.00")
-				return
-			}
-			if amount <= 0 {
-				output.ValidationError("Amount must be greater than 0", "Provide a positive number")
+			var ok bool
+			if amountCents, ok = parseAmountArg(args[0], "10.00"); !ok {
 				return
 			}
 		}
@@ -122,7 +116,7 @@ ITEMIZED INVOICE (optional --item flag, repeatable):
 
 		var lineItems []api.LineItem
 		if len(paylinkCreateItems) > 0 {
-			items, itemTotal, err := ParseItems(paylinkCreateItems)
+			items, itemTotalCents, err := ParseItems(paylinkCreateItems)
 			if err != nil {
 				output.ValidationError("Invalid --item", err.Error())
 				return
@@ -137,24 +131,24 @@ ITEMIZED INVOICE (optional --item flag, repeatable):
 				})
 			}
 
-			if hasAmount && !floatsEqual(itemTotal, amount) {
-				diff := amount - itemTotal
+			if hasAmount && amountCents != itemTotalCents {
+				diff := amountCents - itemTotalCents
 				output.ValidationError(
 					"Amount doesn't match item total",
 					fmt.Sprintf("Amount:     $%.2f\nItem total: $%.2f\nDifference: $%.2f\n\nEither remove the amount argument (let items set the total)\nor fix your --item values to match.",
-						amount, itemTotal, diff),
+						centsToDollars(amountCents), centsToDollars(itemTotalCents), centsToDollars(diff)),
 				)
 				return
 			}
 
-			amount = itemTotal
+			amountCents = itemTotalCents
 
 			if output.IsHumanOutput() {
 				noun := "items"
 				if len(lineItems) == 1 {
 					noun = "item"
 				}
-				fmt.Printf("\n✓ %d %s, total $%.2f\n\n", len(lineItems), noun, amount)
+				fmt.Printf("\n✓ %d %s, total $%.2f\n\n", len(lineItems), noun, centsToDollars(amountCents))
 			}
 		} else if !hasAmount {
 			output.ValidationError(
@@ -166,7 +160,7 @@ ITEMIZED INVOICE (optional --item flag, repeatable):
 
 		client := getClient()
 
-		result, err := client.CreatePaymentRequest(amount, paylinkCreateDesc, paylinkCreateReference, paylinkCreateExpiresIn, paylinkCreateRevealOwner, lineItems)
+		result, err := client.CreatePaymentRequest(centsToDollars(amountCents), paylinkCreateDesc, paylinkCreateReference, paylinkCreateExpiresIn, paylinkCreateRevealOwner, lineItems)
 		if err != nil {
 			handleAPIError(err)
 			return

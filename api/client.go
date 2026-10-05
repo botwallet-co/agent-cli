@@ -566,14 +566,23 @@ func (c *Client) ImportWalletKey(exportID string) (encryptionKeyB64 string, err 
 
 // X402Prepare creates an x402 payment intent (Step 1 server call).
 // Checks guard rails, balance, and creates a transaction record.
-func (c *Client) X402Prepare(url, payTo, amount, network, method string) (map[string]interface{}, error) {
-	return c.Call("x402_prepare", map[string]interface{}{
+// asset (the token mint) and scheme come from the API's payment option;
+// servers that do not know them ignore them.
+func (c *Client) X402Prepare(url, payTo, amount, network, method, asset, scheme string) (map[string]interface{}, error) {
+	data := map[string]interface{}{
 		"url":     url,
 		"pay_to":  payTo,
 		"amount":  amount,
 		"network": network,
 		"method":  method,
-	})
+	}
+	if asset != "" {
+		data["asset"] = asset
+	}
+	if scheme != "" {
+		data["scheme"] = scheme
+	}
+	return c.Call("x402_prepare", data)
 }
 
 // X402Confirm confirms an x402 payment and builds the Solana transaction (Step 2a).
