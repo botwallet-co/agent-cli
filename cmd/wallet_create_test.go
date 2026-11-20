@@ -20,7 +20,6 @@ const testAPIKey = "bw_bot_test_only_key"
 // is created.
 type dkgServer struct {
 	t          *testing.T
-	home       string
 	onComplete func(req map[string]interface{}) (int, interface{})
 }
 
@@ -75,7 +74,7 @@ func loadConfigAt(t *testing.T, home string) *config.Config {
 
 func TestWalletCreateSavesKey1BeforeServerCreatesWallet(t *testing.T) {
 	home := t.TempDir()
-	d := &dkgServer{t: t, home: home}
+	d := &dkgServer{t: t}
 	d.onComplete = func(req map[string]interface{}) (int, interface{}) {
 		// Key 1 must already be on disk when the server creates the wallet.
 		files := seedFiles(t, home)
@@ -112,9 +111,43 @@ func TestWalletCreateSavesKey1BeforeServerCreatesWallet(t *testing.T) {
 	}
 }
 
+// register is wallet create under another name: the same flags, sent the
+// same way.
+func TestRegisterCreatesAWallet(t *testing.T) {
+	if registerCmd.Flags().FlagUsages() != walletCreateCmd.Flags().FlagUsages() {
+		t.Errorf("register and wallet create have different flags:\n%s\n%s",
+			registerCmd.Flags().FlagUsages(), walletCreateCmd.Flags().FlagUsages())
+	}
+
+	home := t.TempDir()
+	api := newFakeAPI(t, (&dkgServer{t: t}).handle)
+	run := runCLI(t, home, api.URL, nil, "register", "--name", " My Bot ", "--owner", "human@example.com",
+		"--model", "test-model", "--desc", "Research", "--meta", "platform=cursor")
+	if run.exitCode != 0 {
+		t.Fatalf("exit %d\n%s\n%s", run.exitCode, run.stdout, run.stderr)
+	}
+
+	init := api.requests("dkg_init")
+	if len(init) != 1 {
+		t.Fatalf("dkg_init requests = %v", init)
+	}
+	want := map[string]interface{}{"name": "My Bot", "owner_email": "human@example.com", "agent_model": "test-model"}
+	for k, v := range want {
+		if init[0][k] != v {
+			t.Errorf("dkg_init %s = %v, want %v", k, init[0][k], v)
+		}
+	}
+	if meta, _ := init[0]["metadata"].(map[string]interface{}); meta["description"] != "Research" || meta["platform"] != "cursor" {
+		t.Errorf("dkg_init metadata = %v", init[0]["metadata"])
+	}
+	if entry, ok := loadConfigAt(t, home).Wallets["my-bot"]; !ok || entry.APIKey != testAPIKey || entry.DisplayName != "My Bot" {
+		t.Errorf("config entry my-bot = %+v, %v", entry, ok)
+	}
+}
+
 func TestWalletCreateRefusedRemovesUnusedSeed(t *testing.T) {
 	home := t.TempDir()
-	d := &dkgServer{t: t, home: home}
+	d := &dkgServer{t: t}
 	d.onComplete = func(map[string]interface{}) (int, interface{}) {
 		return apiFail(http.StatusBadRequest, "SESSION_EXPIRED", "DKG session expired")
 	}
@@ -134,7 +167,7 @@ func TestWalletCreateRefusedRemovesUnusedSeed(t *testing.T) {
 
 func TestWalletCreateUncertainOutcomeKeepsSeed(t *testing.T) {
 	home := t.TempDir()
-	d := &dkgServer{t: t, home: home}
+	d := &dkgServer{t: t}
 	d.onComplete = func(map[string]interface{}) (int, interface{}) {
 		// A gateway error: the wallet may or may not have been created.
 		return http.StatusBadGateway, "<html>502 Bad Gateway</html>"
@@ -176,7 +209,7 @@ func TestWalletCreateStopsBeforeServerWhenConfigIsBroken(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, "config.json"), []byte("{not json"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	d := &dkgServer{t: t, home: home}
+	d := &dkgServer{t: t}
 	api := newFakeAPI(t, d.handle)
 
 	run := runCLI(t, home, api.URL, nil, "wallet", "create", "--name", "My Bot")
@@ -193,7 +226,7 @@ func TestWalletCreateStopsBeforeServerWhenConfigIsBroken(t *testing.T) {
 
 func TestWalletCreateKeepsAPIKeyWhenConfigCannotBeSaved(t *testing.T) {
 	home := t.TempDir()
-	d := &dkgServer{t: t, home: home}
+	d := &dkgServer{t: t}
 	d.onComplete = func(req map[string]interface{}) (int, interface{}) {
 		// config.json breaks while the server is creating the wallet.
 		if err := os.WriteFile(filepath.Join(home, "config.json"), []byte("{not json"), 0600); err != nil {

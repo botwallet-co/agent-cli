@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 )
@@ -15,6 +16,22 @@ import (
 
 var bwltMagic = []byte{0x42, 0x57, 0x4C, 0x54} // "BWLT"
 
+// BWLTPayloadVersion is the version of BWLTPayload that export writes.
+const BWLTPayloadVersion = 1
+
+// BWLTPayload is the JSON that a .bwlt file holds encrypted: what another
+// machine needs to use the wallet. The MCP server reads and writes the same
+// JSON (BwltPayload in packages/mcp/src/config/bwlt.ts).
+type BWLTPayload struct {
+	Version    int    `json:"version"`
+	WalletName string `json:"wallet_name"` // display name
+	Username   string `json:"username"`
+	APIKey     string `json:"api_key"`
+	PublicKey  string `json:"public_key"` // the wallet's address, base58
+	Seed       string `json:"seed"`       // Key 1, the 12 words
+	ExportedAt string `json:"exported_at"`
+}
+
 const (
 	bwltVersion     = 0x01
 	bwltHeaderSize  = 8                                                    // magic (4) + version (1) + reserved (3)
@@ -23,7 +40,9 @@ const (
 	bwltMinSize     = bwltHeaderSize + bwltExportIDLen + bwltNonceLen + 16 // +16 for minimum GCM auth tag
 )
 
-// WriteBWLT writes an encrypted wallet export to a .bwlt file.
+// WriteBWLT writes an encrypted wallet export to a new .bwlt file (0600,
+// fsync). It never replaces a file: if path exists, the error wraps
+// fs.ErrExist and that file is left as it was.
 func WriteBWLT(path string, exportID string, nonce []byte, ciphertext []byte) error {
 	if len(exportID) != bwltExportIDLen {
 		return fmt.Errorf("export ID must be %d characters, got %d", bwltExportIDLen, len(exportID))
@@ -49,7 +68,7 @@ func WriteBWLT(path string, exportID string, nonce []byte, ciphertext []byte) er
 	// Ciphertext (variable length, includes GCM auth tag)
 	buf = append(buf, ciphertext...)
 
-	if err := os.WriteFile(path, buf, 0600); err != nil {
+	if err := writeNewFile(path, buf); err != nil {
 		return fmt.Errorf("failed to write .bwlt file: %w", err)
 	}
 
@@ -68,10 +87,8 @@ func ReadBWLT(path string) (exportID string, nonce []byte, ciphertext []byte, er
 	}
 
 	// Verify magic bytes
-	for i := 0; i < 4; i++ {
-		if data[i] != bwltMagic[i] {
-			return "", nil, nil, fmt.Errorf("not a .bwlt file (invalid magic bytes)")
-		}
+	if !bytes.Equal(data[:len(bwltMagic)], bwltMagic) {
+		return "", nil, nil, fmt.Errorf("not a .bwlt file (invalid magic bytes)")
 	}
 
 	// Check version

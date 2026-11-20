@@ -25,14 +25,14 @@ func TestSigningIntents(t *testing.T) {
 		return c
 	}
 
-	got, err := paymentIntent(confirm(nil))
+	got, err := exactTransferIntent(confirm(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := signingIntent{network: "mainnet-beta", recipient: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
 		minAmount: 10_070_000, maxAmount: 10_070_000, maxFee: 290_000}
 	if *got != want {
-		t.Errorf("paymentIntent = %+v, want %+v", *got, want)
+		t.Errorf("exactTransferIntent = %+v, want %+v", *got, want)
 	}
 
 	// x402: the API's base units may be up to a cent below the rounded-up
@@ -46,7 +46,7 @@ func TestSigningIntents(t *testing.T) {
 	}
 
 	// No fee_usdc means no fee may be charged.
-	if got, err = paymentIntent(confirm(map[string]interface{}{"fee_usdc": nil})); err != nil || got.maxFee != 0 {
+	if got, err = exactTransferIntent(confirm(map[string]interface{}{"fee_usdc": nil})); err != nil || got.maxFee != 0 {
 		t.Errorf("without fee_usdc: %+v, %v", got, err)
 	}
 
@@ -57,7 +57,7 @@ func TestSigningIntents(t *testing.T) {
 		"negative amount": {"amount_usdc": -1.0},
 		"negative fee":    {"fee_usdc": -0.25},
 	} {
-		_, err := paymentIntent(confirm(fields))
+		_, err := exactTransferIntent(confirm(fields))
 		var refused *txcheck.RefusedError
 		if !errors.As(err, &refused) {
 			t.Errorf("%s: err = %v, want a refusal", name, err)

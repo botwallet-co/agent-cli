@@ -40,38 +40,17 @@ func (o *PaymentOption) GetAmount() string {
 	return o.MaxAmountRequired
 }
 
-// ProbeResult is returned by x402 fetch (Step 1) to the agent.
-type ProbeResult struct {
-	PaymentRequired bool             `json:"payment_required"`
-	URL             string           `json:"url"`
-	Method          string           `json:"method"`
-	Options         []PaymentSummary `json:"options,omitempty"`
-	SolanaOption    *PaymentSummary  `json:"solana_option,omitempty"`
-	Compatible      bool             `json:"compatible"`
-	Reason          string           `json:"reason,omitempty"`
-
-	// Free API: data is returned directly
-	FreeResponse *FreeResponse `json:"response,omitempty"`
-}
-
 // PaymentSummary is a simplified view of a PaymentOption for agent consumption.
-// PriceUSDC is the raw amount in the option's asset units (USDC base units
-// when Asset is the USDC mint).
 type PaymentSummary struct {
-	Network     string `json:"network"`
-	Scheme      string `json:"scheme,omitempty"`
-	Asset       string `json:"asset,omitempty"`
-	PriceUSDC   string `json:"price_usdc"`
+	Network string `json:"network"`
+	Scheme  string `json:"scheme,omitempty"`
+	Asset   string `json:"asset,omitempty"`
+	// Amount is the raw price in base units of Asset, whatever token that
+	// is; only for the USDC mint is it USDC base units. Its JSON name
+	// price_usdc predates that distinction and is kept for agents.
+	Amount      string `json:"price_usdc"`
 	PayTo       string `json:"pay_to"`
 	Description string `json:"description,omitempty"`
-}
-
-// FreeResponse wraps a non-402 API response (the API was free).
-type FreeResponse struct {
-	StatusCode  int               `json:"status_code"`
-	ContentType string            `json:"content_type,omitempty"`
-	Body        string            `json:"body"`
-	Headers     map[string]string `json:"headers,omitempty"`
 }
 
 // =============================================================================

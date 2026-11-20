@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,8 +13,13 @@ import (
 	"sync"
 	"testing"
 
+	"filippo.io/edwards25519"
+	solanago "github.com/gagliardetto/solana-go"
+
 	"github.com/botwallet-co/agent-cli/api"
 	"github.com/botwallet-co/agent-cli/config"
+	"github.com/botwallet-co/agent-cli/solana"
+	"github.com/botwallet-co/agent-cli/solana/frost"
 )
 
 // These tests run the real CLI in a child process (the test binary started
@@ -99,18 +105,40 @@ func runCLI(t *testing.T, home, apiURL string, extraEnv []string, args ...string
 	return run
 }
 
+// checkError runs args and checks the error code and that how_to_fix
+// contains each of wantFix.
+func checkError(t *testing.T, home string, api *fakeAPI, args []string, wantCode string, wantFix ...string) map[string]interface{} {
+	t.Helper()
+	run := runCLI(t, home, api.URL, nil, args...)
+	if run.exitCode == 0 {
+		t.Fatalf("exit 0, want an error\n%s", run.stdout)
+	}
+	out := run.json(t)
+	if out["error"] != wantCode {
+		t.Fatalf("error = %v, want %s\n%s", out["error"], wantCode, run.stdout)
+	}
+	fix, _ := out["how_to_fix"].(string)
+	for _, w := range wantFix {
+		if !strings.Contains(fix, w) {
+			t.Errorf("how_to_fix = %q, want it to contain %q", fix, w)
+		}
+	}
+	return out
+}
+
 // fakeAPI is a stand-in for the Botwallet API. handle gets the action and
 // request body and returns the HTTP status and response body.
 type fakeAPI struct {
 	*httptest.Server
 	mu      sync.Mutex
 	actions []string
-	auth    map[string]string // action -> Authorization header of its last call
+	auth    map[string]string                   // action -> Authorization header of its last call
+	bodies  map[string][]map[string]interface{} // action -> request bodies, in order
 }
 
 func newFakeAPI(t *testing.T, handle func(action string, req map[string]interface{}) (int, interface{})) *fakeAPI {
 	t.Helper()
-	f := &fakeAPI{auth: map[string]string{}}
+	f := &fakeAPI{auth: map[string]string{}, bodies: map[string][]map[string]interface{}{}}
 	f.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req map[string]interface{}
 		_ = json.NewDecoder(r.Body).Decode(&req)
@@ -119,6 +147,7 @@ func newFakeAPI(t *testing.T, handle func(action string, req map[string]interfac
 		f.mu.Lock()
 		f.actions = append(f.actions, action)
 		f.auth[action] = r.Header.Get("Authorization")
+		f.bodies[action] = append(f.bodies[action], req)
 		f.mu.Unlock()
 
 		status, body := handle(action, req)
@@ -140,6 +169,14 @@ func (f *fakeAPI) called() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.actions...)
+}
+
+// requests returns the request bodies the fake API received for action, in
+// order.
+func (f *fakeAPI) requests(action string) []map[string]interface{} {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]map[string]interface{}(nil), f.bodies[action]...)
 }
 
 // authOf returns the Authorization header the last call of action carried.
@@ -169,6 +206,14 @@ func apiFail(status int, code, message string) (int, interface{}) {
 	}
 }
 
+// apiFailWithFix is apiFail with the server's how_to_fix.
+func apiFailWithFix(status int, code, message, howToFix string) (int, interface{}) {
+	return status, map[string]interface{}{
+		"success": false,
+		"error":   map[string]interface{}{"code": code, "message": message, "how_to_fix": howToFix},
+	}
+}
+
 func apiError(code, message string) error {
 	return &api.APIError{Code: code, Message: message}
 }
@@ -177,3 +222,59 @@ func apiError(code, message string) error {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// testWallet is a local wallet set up the way wallet create leaves it.
+type testWallet struct {
+	apiKey    string
+	address   string // base58 group key = deposit address
+	groupKey  []byte // the same address, raw 32 bytes
+	agentPart *edwards25519.Point
+}
+
+// addTestWallet creates a wallet in home: a real Key 1, a made-up server
+// share, and the config entry with the resulting deposit address.
+func addTestWallet(t *testing.T, home, name string) testWallet {
+	t.Helper()
+	return addTestWalletEntry(t, home, name, true)
+}
+
+// addTestWalletEntry is addTestWallet; with storeAddress false the config
+// entry has no address, like entries written by older MCP versions.
+func addTestWalletEntry(t *testing.T, home, name string, storeAddress bool) testWallet {
+	t.Helper()
+	mnemonic, err := frost.GenerateShareMnemonic()
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := frost.KeyShareFromMnemonic(mnemonic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := frost.GenerateKeyShare()
+	if err != nil {
+		t.Fatal(err)
+	}
+	groupKey := frost.EncodePoint(frost.ComputeGroupKey(agent.Public, server.Public))
+	w := testWallet{
+		apiKey:    "bw_bot_test_" + name,
+		address:   solana.AddressString(groupKey),
+		groupKey:  groupKey,
+		agentPart: agent.Public,
+	}
+
+	stored := w.address
+	if !storeAddress {
+		stored = ""
+	}
+	t.Setenv(config.ConfigDirEnv, home)
+	if _, err := config.AddWalletWithInfo(name, name+"-user", name, w.apiKey, stored, mnemonic); err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
+// testAddress is a made-up Solana address.
+func testAddress(name string) solanago.PublicKey {
+	h := sha256.Sum256([]byte(name))
+	return solanago.PublicKeyFromBytes(h[:])
+}

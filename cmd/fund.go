@@ -9,7 +9,6 @@ package cmd
 
 import (
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -47,7 +46,7 @@ You can call this directly or use subcommands:
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			cmd.Help()
+			_ = cmd.Help()
 			return
 		}
 		fundAskCmd.Run(cmd, args)
@@ -74,9 +73,7 @@ Always provide a reason so your owner knows why you need the funds!`,
   botwallet fund ask 100.00 --reason "Need to purchase database credits"`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
 		amountCents, ok := parseAmountArg(args[0], "50.00")
 		if !ok {
@@ -84,11 +81,9 @@ Always provide a reason so your owner knows why you need the funds!`,
 		}
 
 		if fundAskReason == "" {
-			output.ValidationError("--reason flag is required", "Explain why you need the funds, e.g., --reason \"API costs\"")
+			exitValidationError("--reason flag is required", "Explain why you need the funds, e.g., --reason \"API costs\"")
 			return
 		}
-
-		client := getClient()
 
 		result, err := client.RequestFunds(centsToDollars(amountCents), fundAskReason)
 		if err != nil {
@@ -96,30 +91,7 @@ Always provide a reason so your owner knows why you need the funds!`,
 			return
 		}
 
-		// JSON output (default for bots)
-		if !output.IsHumanOutput() {
-			output.JSON(result)
-			return
-		}
-
-		// Human-readable output
-		output.SuccessMsg("Fund request submitted!")
-		output.Section("Request Details")
-		output.KeyValue("Request ID", result["request_id"])
-		respAmount, _ := result["amount_usdc"].(float64)
-		if respAmount == 0 {
-			respAmount, _ = result["amount"].(float64)
-		}
-		output.KeyValueMoney("Amount", respAmount)
-		output.KeyValue("Reason", result["reason"])
-		if sentTo, ok := result["sent_to"].(string); ok && sentTo != "" {
-			output.KeyValue("Notified", sentTo)
-		}
-		if payURL, ok := result["payment_url"].(string); ok && payURL != "" {
-			output.KeyValue("Funding Link", payURL)
-		}
-
-		output.Tip("Your owner will see this in their dashboard.")
+		output.FormatFundRequest(result)
 	},
 }
 
@@ -130,8 +102,7 @@ func init() {
 		if strings.Contains(msg, "unknown shorthand flag") || strings.Contains(msg, "unknown flag") {
 			for _, a := range os.Args {
 				if len(a) > 1 && a[0] == '-' && a[1] >= '0' && a[1] <= '9' {
-					output.ValidationError("Amount must be a positive number", "Provide a positive amount, e.g., botwallet fund ask 50.00 --reason \"...\"")
-					os.Exit(1)
+					exitValidationError("Amount must be a positive number", "Provide a positive amount, e.g., botwallet fund ask 50.00 --reason \"...\"")
 				}
 			}
 		}
@@ -160,18 +131,14 @@ funded, and dismissed requests.`,
   botwallet fund list --status pending
   botwallet fund list --limit 10`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
 		status, ok := fundStatusFilter(fundListStatus)
 		if !ok {
-			output.ValidationError("Unknown status: "+fundListStatus,
+			exitValidationError("Unknown status: "+fundListStatus,
 				"Use one of: pending, funded, dismissed, all")
 			return
 		}
-
-		client := getClient()
 
 		result, err := client.ListFundRequests(status, fundListLimit, fundListOffset)
 		if err != nil {
@@ -179,59 +146,7 @@ funded, and dismissed requests.`,
 			return
 		}
 
-		// JSON output (default for bots)
-		if !output.IsHumanOutput() {
-			output.JSON(result)
-			return
-		}
-
-		// Human-readable output
-		var requests []interface{}
-		if r, ok := result["requests"].([]interface{}); ok {
-			requests = r
-		}
-		total := 0
-		if t, ok := result["total"].(float64); ok {
-			total = int(t)
-		}
-
-		output.Section("Fund Requests")
-
-		if len(requests) == 0 {
-			output.InfoMsg("No fund requests found.")
-			output.Tip("Request funds with: botwallet fund ask <amount> --reason \"...\"")
-			return
-		}
-
-		rows := make([]output.TableRow, 0, len(requests))
-		for _, r := range requests {
-			req, ok := r.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			reqID, _ := req["request_id"].(string)
-			status, _ := req["status"].(string)
-			amount, _ := req["amount_usdc"].(float64)
-			if amount == 0 {
-				amount, _ = req["amount"].(float64)
-			}
-			reason, _ := req["reason"].(string)
-			rows = append(rows, output.TableRow{
-				Columns: []string{
-					truncateFundID(reqID),
-					status,
-					formatFundMoney(amount),
-					truncateFundString(reason, 30),
-				},
-			})
-		}
-
-		output.Table([]string{"ID", "Status", "Amount", "Reason"}, rows)
-		output.Println("\n  Total: %d requests", total)
-
-		if hasMore, ok := result["has_more"].(bool); ok && hasMore {
-			output.Tip("Use --limit and --offset for more results.")
-		}
+		output.FormatFundRequests(result)
 	},
 }
 
@@ -261,24 +176,6 @@ func fundStatusFilter(status string) (string, bool) {
 	default:
 		return "", false
 	}
-}
-
-func formatFundMoney(amount float64) string {
-	return "$" + strconv.FormatFloat(amount, 'f', 2, 64)
-}
-
-func truncateFundString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
-}
-
-func truncateFundID(id string) string {
-	if len(id) <= 12 {
-		return id
-	}
-	return id[:8] + "..."
 }
 
 // =============================================================================

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -27,7 +26,7 @@ How it works:
 
 Optional Features:
   • Itemized invoice: Add line items with --item (repeatable)
-  • Owner privacy: Hide your email with --revealOwner=false
+  • Owner privacy: Hide your email with --reveal-owner=false
 
 Subcommands:
   create    Create a new payment link
@@ -95,9 +94,7 @@ ITEMIZED INVOICE (optional --item flag, repeatable):
   botwallet paylink create 50.00 --desc "Consulting" --reference "INV-001" --expires "7d"`,
 	Args: cobra.RangeArgs(0, 1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
 		var amountCents int64
 		hasAmount := len(args) > 0
@@ -110,30 +107,22 @@ ITEMIZED INVOICE (optional --item flag, repeatable):
 		}
 
 		if paylinkCreateDesc == "" {
-			output.ValidationError("--desc flag is required", "Describe what you're charging for, e.g., --desc \"Research report\"")
+			exitValidationError("--desc flag is required", "Describe what you're charging for, e.g., --desc \"Research report\"")
 			return
 		}
 
 		var lineItems []api.LineItem
 		if len(paylinkCreateItems) > 0 {
-			items, itemTotalCents, err := ParseItems(paylinkCreateItems)
+			items, itemTotalCents, err := parseItems(paylinkCreateItems)
 			if err != nil {
-				output.ValidationError("Invalid --item", err.Error())
+				exitValidationError("Invalid --item", err.Error())
 				return
 			}
-
-			for _, item := range items {
-				lineItems = append(lineItems, api.LineItem{
-					Description:    item.Description,
-					Quantity:       item.Quantity,
-					UnitPriceCents: item.UnitPriceCents,
-					TotalCents:     item.TotalCents,
-				})
-			}
+			lineItems = items
 
 			if hasAmount && amountCents != itemTotalCents {
 				diff := amountCents - itemTotalCents
-				output.ValidationError(
+				exitValidationError(
 					"Amount doesn't match item total",
 					fmt.Sprintf("Amount:     $%.2f\nItem total: $%.2f\nDifference: $%.2f\n\nEither remove the amount argument (let items set the total)\nor fix your --item values to match.",
 						centsToDollars(amountCents), centsToDollars(itemTotalCents), centsToDollars(diff)),
@@ -142,25 +131,23 @@ ITEMIZED INVOICE (optional --item flag, repeatable):
 			}
 
 			amountCents = itemTotalCents
-
-			if output.IsHumanOutput() {
-				noun := "items"
-				if len(lineItems) == 1 {
-					noun = "item"
-				}
-				fmt.Printf("\n✓ %d %s, total $%.2f\n\n", len(lineItems), noun, centsToDollars(amountCents))
-			}
+			output.PaylinkItemsTotal(len(lineItems), centsToDollars(amountCents))
 		} else if !hasAmount {
-			output.ValidationError(
+			exitValidationError(
 				"Amount is required",
 				"Provide an amount or use --item flags:\n  botwallet paylink create 10.00 --desc \"Service\"\n  botwallet paylink create --desc \"Service\" --item \"Item, 10.00\"",
 			)
 			return
 		}
 
-		client := getClient()
-
-		result, err := client.CreatePaymentRequest(centsToDollars(amountCents), paylinkCreateDesc, paylinkCreateReference, paylinkCreateExpiresIn, paylinkCreateRevealOwner, lineItems)
+		result, err := client.CreatePaymentRequest(api.PaymentRequest{
+			Amount:      centsToDollars(amountCents),
+			Description: paylinkCreateDesc,
+			Reference:   paylinkCreateReference,
+			ExpiresIn:   paylinkCreateExpiresIn,
+			RevealOwner: paylinkCreateRevealOwner,
+			LineItems:   lineItems,
+		})
 		if err != nil {
 			handleAPIError(err)
 			return
@@ -174,7 +161,10 @@ func init() {
 	paylinkCreateCmd.Flags().StringVar(&paylinkCreateDesc, "desc", "", "Description/note shown on payment page (required)")
 	paylinkCreateCmd.Flags().StringVar(&paylinkCreateReference, "reference", "", "Your internal reference ID")
 	paylinkCreateCmd.Flags().StringVar(&paylinkCreateExpiresIn, "expires", "24h", "Expiration time: 1h, 24h, 7d")
-	paylinkCreateCmd.Flags().BoolVar(&paylinkCreateRevealOwner, "revealOwner", true, "Show owner email on payment page (default: true)")
+	paylinkCreateCmd.Flags().BoolVar(&paylinkCreateRevealOwner, "reveal-owner", true, "Show owner email on payment page")
+	// The flag's first spelling, still accepted so existing scripts keep working
+	paylinkCreateCmd.Flags().BoolVar(&paylinkCreateRevealOwner, "revealOwner", true, "Same as --reveal-owner")
+	_ = paylinkCreateCmd.Flags().MarkHidden("revealOwner")
 	paylinkCreateCmd.Flags().StringArrayVar(&paylinkCreateItems, "item", nil, "Line item: \"description, price[, qty]\" (repeatable)")
 }
 
@@ -185,15 +175,13 @@ var paylinkGetCmd = &cobra.Command{
 	Short: "Check if a paylink has been paid",
 	Long: `Check the status of a payment link.
 
-Shows whether the paylink is pending, paid, expired, or cancelled.
-If paid, shows who paid and the transaction details.`,
+Shows whether the paylink is pending, completed (paid), expired, or
+cancelled. If it was paid, shows who paid and the transaction details.`,
 	Example: `  botwallet paylink get pl_abc123def456
   botwallet paylink get --reference my-ref-123`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
 		var paylinkID string
 		if len(args) > 0 {
@@ -201,11 +189,9 @@ If paid, shows who paid and the transaction details.`,
 		}
 
 		if paylinkID == "" && paylinkGetReference == "" {
-			output.ValidationError("Provide a paylink ID or --reference", "Usage: botwallet paylink get <paylink-id> OR botwallet paylink get --reference <ref>")
+			exitValidationError("Provide a paylink ID or --reference", "Usage: botwallet paylink get <paylink-id> OR botwallet paylink get --reference <ref>")
 			return
 		}
-
-		client := getClient()
 
 		result, err := client.GetPaymentRequest(paylinkID, paylinkGetReference)
 		if err != nil {
@@ -213,42 +199,7 @@ If paid, shows who paid and the transaction details.`,
 			return
 		}
 
-		if !output.IsHumanOutput() {
-			output.JSON(result)
-			return
-		}
-
-		status, _ := result["status"].(string)
-		amount, _ := result["amount_usdc"].(float64)
-		if amount == 0 {
-			amount, _ = result["amount"].(float64)
-		}
-
-		output.Section("Payment Link")
-		output.KeyValue("Paylink ID", result["request_id"])
-		output.KeyValue("Status", status)
-		output.KeyValueMoney("Amount", amount)
-		output.KeyValue("Description", result["description"])
-
-		if status == "pending" {
-			output.KeyValue("Expires", result["expires_at"])
-			if payURL, ok := result["payment_url"].(string); ok {
-				output.KeyValueURL("Payment URL", payURL)
-			}
-			output.Tip("Share the payment URL to get paid!")
-		} else if status == "completed" {
-			received, _ := result["received_usdc"].(float64)
-			if received == 0 {
-				received, _ = result["received"].(float64)
-			}
-			if received > 0 {
-				output.KeyValueMoney("Received (after fee)", received)
-			}
-			if paidBy, ok := result["paid_by"].(string); ok {
-				output.KeyValue("Paid by", paidBy)
-			}
-			output.KeyValue("Paid at", result["paid_at"])
-		}
+		output.FormatPaylink(result)
 	},
 }
 
@@ -267,17 +218,14 @@ var paylinkListCmd = &cobra.Command{
 	Short: "List your payment links",
 	Long: `List all your payment links.
 
-Filter by status to see pending, paid, expired, or all paylinks.
+Without --status it lists them all. Filter with --status pending, completed
+(paid), expired or cancelled.
 Use this to track your earnings and outstanding payment links.`,
 	Example: `  botwallet paylink list
   botwallet paylink list --status pending
   botwallet paylink list --status completed --limit 10`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
-
-		client := getClient()
+		client := authedClient()
 
 		result, err := client.ListPaymentRequests(paylinkListStatus, paylinkListLimit, paylinkListOffset)
 		if err != nil {
@@ -285,69 +233,7 @@ Use this to track your earnings and outstanding payment links.`,
 			return
 		}
 
-		if !output.IsHumanOutput() {
-			output.JSON(result)
-			return
-		}
-
-		// Current API: "payment_requests", Legacy: "requests"
-		var paylinks []interface{}
-		if prs, ok := result["payment_requests"].([]interface{}); ok {
-			paylinks = prs
-		} else if prs, ok := result["requests"].([]interface{}); ok {
-			paylinks = prs
-		}
-
-		total := 0
-		if t, ok := result["total"].(float64); ok {
-			total = int(t)
-		}
-
-		output.Section("Payment Links")
-
-		if len(paylinks) == 0 {
-			output.InfoMsg("No payment links found.")
-			output.Tip("Create one with: botwallet paylink create [amount] --desc \"...\"")
-			return
-		}
-
-		rows := make([]output.TableRow, 0, len(paylinks))
-		for _, r := range paylinks {
-			pl, ok := r.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			shortCode := ""
-			if sc, ok := pl["short_code"].(string); ok {
-				shortCode = sc
-			}
-			status := ""
-			if s, ok := pl["status"].(string); ok {
-				status = s
-			}
-			amountStr := "$0.00"
-			if a, ok := pl["amount_usdc"].(float64); ok {
-				amountStr = formatPaylinkMoney(a)
-			} else if a, ok := pl["amount"].(float64); ok {
-				amountStr = formatPaylinkMoney(a)
-			}
-			desc := ""
-			if d, ok := pl["description"].(string); ok {
-				desc = truncatePaylinkString(d, 30)
-			}
-
-			rows = append(rows, output.TableRow{
-				Columns: []string{shortCode, status, amountStr, desc},
-			})
-		}
-
-		output.Table([]string{"Code", "Status", "Amount", "Description"}, rows)
-		output.Println("\n  Total: %d paylinks", total)
-
-		if hasMore, ok := result["has_more"].(bool); ok && hasMore {
-			output.Tip("Use --limit and --offset for more results.")
-		}
+		output.FormatPaylinks(result)
 	},
 }
 
@@ -367,12 +253,9 @@ cannot be cancelled.`,
 	Example: "  botwallet paylink cancel pl_abc123def456",
 	Args:    cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
 		paylinkID := args[0]
-		client := getClient()
 
 		result, err := client.CancelPaymentRequest(paylinkID)
 		if err != nil {
@@ -380,13 +263,7 @@ cannot be cancelled.`,
 			return
 		}
 
-		if !output.IsHumanOutput() {
-			output.JSON(result)
-			return
-		}
-
-		output.SuccessMsg("Payment link cancelled!")
-		output.KeyValue("Paylink ID", result["request_id"])
+		output.FormatPaylinkCancelled(result)
 	},
 }
 
@@ -415,14 +292,12 @@ Use this after creating a paylink to request payment from a specific person or b
   botwallet paylink send <request_id> --to @data-bot --message "Payment for research data"`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
 		paylinkID := args[0]
 
 		if paylinkSendTo == "" {
-			output.ValidationError("--to flag is required", "Provide a recipient: --to client@example.com OR --to @bot-username")
+			exitValidationError("--to flag is required", "Provide a recipient: --to client@example.com OR --to @bot-username")
 			return
 		}
 
@@ -432,11 +307,9 @@ Use this after creating a paylink to request payment from a specific person or b
 		} else if strings.Contains(paylinkSendTo, "@") {
 			toEmail = paylinkSendTo
 		} else {
-			output.ValidationError("Invalid --to value", "Use an email (user@example.com) or bot username (@bot-name)")
+			exitValidationError("Invalid --to value", "Use an email (user@example.com) or bot username (@bot-name)")
 			return
 		}
-
-		client := getClient()
 
 		result, err := client.SendPaylinkInvitation(paylinkID, toEmail, toWallet, paylinkSendMessage)
 		if err != nil {
@@ -444,24 +317,13 @@ Use this after creating a paylink to request payment from a specific person or b
 			return
 		}
 
-		output.FormatSendPaylinkInvitation(result)
+		output.FormatSendPaylinkInvitation(paylinkID, result)
 	},
 }
 
 func init() {
 	paylinkSendCmd.Flags().StringVar(&paylinkSendTo, "to", "", "Recipient: email address or @bot-username (required)")
 	paylinkSendCmd.Flags().StringVar(&paylinkSendMessage, "message", "", "Optional personal message included with the request")
-}
-
-func formatPaylinkMoney(amount float64) string {
-	return "$" + strconv.FormatFloat(amount, 'f', 2, 64)
-}
-
-func truncatePaylinkString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }
 
 func init() {

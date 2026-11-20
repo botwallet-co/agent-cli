@@ -28,10 +28,10 @@ botwallet paylink create 25.00 --desc "Research report"  # Your agent just creat
 - **Pay** other agents and merchants — `botwallet pay @recipient 10.00`
 - **Earn** money via invoices and paylinks — `botwallet paylink create`
 - **Access paid APIs** through x402 — `botwallet x402 fetch <url>`
-- **Request funds** from their human owner — `botwallet fund 50.00`
+- **Request funds** from their human owner — `botwallet fund 50.00 --reason "API costs"`
 - **Withdraw** USDC to any Solana address — `botwallet withdraw`
 
-Every transaction is FROST 2-of-2 threshold signed (agent + server). The full private key never exists anywhere. Human owners set guard rails — per-transaction limits, daily caps, merchant allowlists — and approve anything outside the rules.
+Every transaction is FROST 2-of-2 threshold signed (agent + server). During normal signing the full private key is never assembled; only the recovery tool combines both shares, inside the owner's browser, when the owner recovers a wallet. Human owners set guard rails — per-transaction limits, daily caps, merchant allowlists — and approve anything outside the rules.
 
 ## Installation
 
@@ -108,7 +108,7 @@ Flags: `--note`, `--reference`, `--paylink`, `--idempotency-key`
 | `paylink list` | List paylinks |
 | `paylink cancel <id>` | Cancel paylink |
 
-Create flags: `--desc` (required), `--item` (repeatable), `--expires`, `--reference`, `--revealOwner`
+Create flags: `--desc` (required), `--item` (repeatable), `--expires`, `--reference`, `--reveal-owner`
 Send flags: `--to` (required, email or @bot-username), `--message` (optional note)
 
 `--item` format — repeat for each line item, total auto-calculated:
@@ -148,7 +148,7 @@ Use this to poll after any action returns `awaiting_approval`. When status is `a
 | `events --mark-read --ids <id>,<id>` | Mark the events you handled as read |
 | `events --mark-read` | Mark every unread event as read |
 
-Event types: `approval_resolved`, `deposit_received`, `payment_completed`, `fund_requested`, `fund_request_funded`, `wallet_pledged`, `guardrails_updated`, `x402_payment_completed`, `x402_payment_failed`
+Event types: `approval_required`, `approval_expiring`, `approval_resolved`, `deposit_received`, `payment_completed`, `withdrawal_completed`, `x402_payment_completed`, `x402_payment_failed`, `fund_requested`, `fund_request_funded`, `fund_request_dismissed`, `paylink_created`, `paylink_received`, `low_balance`, `wallet_pledged`, `wallet_abandoned`, `keys_exported` (`botwallet docs` says what each means)
 
 `notifications` is an alias for `events`.
 
@@ -164,13 +164,14 @@ Event types: `approval_resolved`, `deposit_received`, `payment_completed`, `fund
 
 Discover flags: `--bazaar`, `--limit` (bazaar), `--offset` (bazaar), `--all` (bazaar), `--facilitator`
 Fetch flags: `--method`, `--body`, `--header` (repeatable)
+Confirm flags: `--body`, `--header` (repeatable), `--method`. The paid request goes to the URL, with the method, the probe recorded; pass the probe's `--body` and `--header` again (they are not kept). `--method` overrides the recorded method.
 
 ### Utilities
 | Command | Description |
 |---------|-------------|
 | `history` | Transaction history (`--type in/out/all`) |
 | `limits` | Spending limits and guard rails |
-| `approvals` | List all pending owner approvals |
+| `approvals` | List all pending owner approvals (also: `approval list`) |
 | `approval status <id>` | Check a specific approval's status |
 | `lookup @username` | Check if recipient exists |
 | `ping` | Test API connectivity |
@@ -200,19 +201,33 @@ writing keys into the current directory.
 
 ## Output Modes
 
-**JSON (default)** — for bots:
+**JSON (default)** — for bots (some fields left out):
 ```bash
 $ botwallet wallet balance
-{"balance": 42.50, "daily_limit": 500.00, "spent_today": 10.00, "remaining_today": 490.00}
+{
+  "balance": 42.5,
+  "budget": 500,
+  "budget_period": "daily",
+  "funding_url": "https://botwallet.co/fund/orion-1234",
+  "low_balance": false,
+  "remaining_budget": 490,
+  "spent_this_period": 10
+}
 ```
 
 **Human** (`--human` flag) — formatted with colors:
 ```bash
 $ botwallet wallet balance --human
-── Balance ────────────────────
+
+── Balance ───────────────────────────────────────────
   Available: $42.50
-── Daily Spending ─────────────
-  Spent Today: $10.00 / $500.00
+
+── Spending (daily) ──────────────────────────────────
+  Budget: $500.00 / daily
+  Spent: $10.00
+  Remaining: $490.00
+
+💡 Use 'botwallet pay @recipient <amount>' to send money.
 ```
 
 ## Examples
@@ -262,7 +277,7 @@ BotWallet uses **FROST (Flexible Round-Optimized Schnorr Threshold) 2-of-2 signa
 - **Key 1** (the agent's share): stored locally at `~/.botwallet/seeds/<wallet>.seed`
 - **Key 2** (the server's share): held by BotWallet, never sent to the agent
 
-The full private key never exists anywhere. Every transaction requires both parties to produce partial signatures that combine into a valid Ed25519 signature. Neither the agent nor BotWallet can move funds alone.
+During normal signing the full private key is never assembled; only the recovery tool combines both shares, inside the owner's browser, when the owner recovers a wallet. Every transaction requires both parties to produce partial signatures that combine into a valid Ed25519 signature. Neither the agent nor BotWallet can move funds alone.
 
 Before Key 1 signs, the CLI decodes the Solana transaction and checks it against the payment it was shown. It signs only a USDC transfer from this wallet into the recipient's associated (standard) USDC account for that amount, plus at most the quoted fee. Anything else (another recipient, a larger amount, extra instructions) stops with `TRANSACTION_MISMATCH` and nothing is signed. The [MCP server](https://github.com/botwallet-co/mcp) and the signing page apply the same rules.
 

@@ -37,22 +37,20 @@ Note: 'transactions' is an alias for 'history'.`,
   botwallet history --type in
   botwallet history --type out --limit 50`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
 		// The server filters by direction only. Any other value used to come
 		// back as the full, unfiltered list.
 		txType := strings.ToLower(strings.TrimSpace(historyType))
 		switch txType {
-		case "", "all", "in", "out":
+		case "all":
+			txType = "" // no filter
+		case "", "in", "out":
 		default:
-			output.ValidationError("Unknown --type: "+historyType,
+			exitValidationError("Unknown --type: "+historyType,
 				"Use in, out or all. To find one kind (payment, deposit, withdrawal, ...), list all and read each transaction's type field")
 			return
 		}
-
-		client := getClient()
 
 		result, err := client.Transactions(txType, historyLimit, historyOffset)
 		if err != nil {
@@ -68,63 +66,4 @@ func init() {
 	historyCmd.Flags().StringVar(&historyType, "type", "", "Filter: in (money in), out (money out), all (default: all)")
 	historyCmd.Flags().IntVar(&historyLimit, "limit", 20, "Maximum results to return")
 	historyCmd.Flags().IntVar(&historyOffset, "offset", 0, "Offset for pagination")
-}
-
-var limitsCmd = &cobra.Command{
-	Use:   "limits",
-	Short: "View your spending limits and guard rails",
-	Long: `View your wallet's guard rails (spending limits and restrictions).
-
-Guard rails are set by your human owner and control:
-- Maximum amount per transaction
-- Daily spending limit
-- Which merchants/bots you can pay
-- Whether you can create payment requests
-- Withdrawal permissions and limits
-
-Use this to understand what actions you can and cannot take.`,
-	Example: "  botwallet limits",
-	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
-
-		client := getClient()
-
-		result, err := client.MyLimits()
-		if err != nil {
-			handleAPIError(err)
-			return
-		}
-
-		output.FormatLimits(result)
-	},
-}
-
-var approvalsCmd = &cobra.Command{
-	Use:   "approvals",
-	Short: "View pending owner approvals",
-	Long: `View actions waiting for your human owner's approval.
-
-Actions that may require owner approval:
-- Payments above your per-transaction approval threshold
-- All withdrawals (owner must approve before you can confirm)
-
-Share the approval URLs with your owner to get these approved.`,
-	Example: "  botwallet approvals",
-	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
-
-		client := getClient()
-
-		result, err := client.PendingApprovals()
-		if err != nil {
-			handleAPIError(err)
-			return
-		}
-
-		output.FormatPendingApprovals(result)
-	},
 }

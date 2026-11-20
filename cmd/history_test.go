@@ -6,9 +6,7 @@ func TestHistoryTypeFilter(t *testing.T) {
 	home := t.TempDir()
 	addTestWallet(t, home, "main")
 
-	types := make(chan interface{}, 10)
 	api := newFakeAPI(t, func(action string, req map[string]interface{}) (int, interface{}) {
-		types <- req["type"]
 		return apiOK(map[string]interface{}{"transactions": []interface{}{}, "total": 0})
 	})
 
@@ -18,8 +16,12 @@ func TestHistoryTypeFilter(t *testing.T) {
 			t.Fatalf("--type %s: exit %d\n%s", v, run.exitCode, run.stdout)
 		}
 	}
-	for _, want := range []string{"in", "out", "out"} {
-		if got := <-types; got != want {
+	sent := api.requests("transactions")
+	if len(sent) != 3 {
+		t.Fatalf("transactions requests = %v, want 3", sent)
+	}
+	for i, want := range []string{"in", "out", "out"} {
+		if got := sent[i]["type"]; got != want {
 			t.Errorf("type sent = %v, want %s", got, want)
 		}
 	}
@@ -29,7 +31,7 @@ func TestHistoryTypeFilter(t *testing.T) {
 	if code := run.json(t)["error"]; code != "VALIDATION_ERROR" {
 		t.Fatalf("error = %v, want VALIDATION_ERROR\n%s", code, run.stdout)
 	}
-	if len(types) != 0 {
-		t.Error("an unsupported --type was sent to the server")
+	if len(api.called()) != 3 {
+		t.Errorf("an unsupported --type was sent to the server: %v", api.called())
 	}
 }

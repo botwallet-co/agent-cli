@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/botwallet-co/agent-cli/output"
+	"github.com/spf13/cobra"
 )
 
 // Dollar amounts for pay, pay preview, withdraw, fund ask and paylink create
@@ -85,6 +85,34 @@ func centsToDollars(cents int64) float64 {
 	return float64(cents) / 100
 }
 
+// negativeAmountFlagError returns the flag error handler (SetFlagErrorFunc)
+// of pay and withdraw. Cobra reads a negative amount such as -5.00 as an
+// unknown shorthand flag; the handler reports that as a validation error
+// with example, and passes every other flag error through. Cobra calls it
+// only for flag errors, unlike FParseErrWhitelist, which would let every
+// unknown flag through.
+func negativeAmountFlagError(example string) func(*cobra.Command, error) error {
+	return func(cmd *cobra.Command, err error) error {
+		msg := err.Error()
+		// Detect pattern: "unknown shorthand flag: 'X' in -VALUE"
+		if strings.Contains(msg, "unknown shorthand flag") {
+			if idx := strings.Index(msg, " in "); idx >= 0 {
+				value := strings.TrimSpace(msg[idx+4:])
+				if _, parseErr := strconv.ParseFloat(value, 64); parseErr == nil {
+					// Flag parsing failed before --human was applied.
+					applyHumanFlagFromArgs()
+					exitValidationError(
+						"Amount must be a positive number",
+						"Got '"+value+"'. Use a positive number, e.g., "+example,
+					)
+					return nil // exitValidationError exits
+				}
+			}
+		}
+		return err // All other flag errors pass through normally
+	}
+}
+
 // parseAmountArg parses the amount argument of pay, pay preview, withdraw,
 // fund ask and paylink create. On a bad amount it prints the validation
 // error (which exits) and returns ok=false.
@@ -92,17 +120,17 @@ func parseAmountArg(arg, example string) (cents int64, ok bool) {
 	cents, err := parseCents(arg)
 	switch {
 	case errors.Is(err, errAmountNotPositive), err == nil && cents <= 0:
-		output.ValidationError("Amount must be greater than 0", "Provide a positive number")
+		exitValidationError("Amount must be greater than 0", "Provide a positive number")
 		return 0, false
 	case errors.Is(err, errAmountDecimals):
-		output.ValidationError("Invalid amount: "+arg,
+		exitValidationError("Invalid amount: "+arg,
 			"Amounts are in dollars and cents, with at most 2 decimal places, e.g., "+example)
 		return 0, false
 	case errors.Is(err, errAmountTooLarge):
-		output.ValidationError("Invalid amount: "+arg, "Amount is too large")
+		exitValidationError("Invalid amount: "+arg, "Amount is too large")
 		return 0, false
 	case err != nil:
-		output.ValidationError("Invalid amount: "+arg, "Amount should be a number, e.g., "+example)
+		exitValidationError("Invalid amount: "+arg, "Amount should be a number, e.g., "+example)
 		return 0, false
 	}
 	return cents, true

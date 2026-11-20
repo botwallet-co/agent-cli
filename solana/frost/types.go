@@ -52,37 +52,3 @@ type PartialSignResult struct {
 	GroupNonce *edwards25519.Point  // PUBLIC: R = R1 + R2 (the combined nonce point)
 	Challenge  *edwards25519.Scalar // PUBLIC: k = H(R||A||M) (the Ed25519 challenge)
 }
-
-// DKGRound1Result holds the output of the first DKG round (from server).
-// The CLI receives this from the server's dkg_init response.
-type DKGRound1Result struct {
-	SessionID         string // Server-assigned session ID for this DKG
-	ServerPublicShare []byte // 32 bytes: server's public key share A2 (compressed Ed25519 point)
-}
-
-// DKGRound2Data holds what the CLI sends back in dkg_complete.
-// Only PUBLIC values — no secrets cross the wire.
-type DKGRound2Data struct {
-	SessionID      string // From DKGRound1Result
-	BotPublicShare []byte // 32 bytes: bot's public key share A1
-	GroupPublicKey []byte // 32 bytes: A = A1 + A2 (the Solana deposit address)
-}
-
-// SignRound1Data holds what the CLI sends to start FROST signing.
-type SignRound1Data struct {
-	TransactionID   string // The transaction being signed
-	NonceCommitment []byte // 32 bytes: R1 = r1*G (bot's nonce commitment)
-}
-
-// SignRound1Response holds what the server returns after sign_init.
-type SignRound1Response struct {
-	SessionID             string // Signing session ID
-	ServerNonceCommitment []byte // 32 bytes: R2 = r2*G (server's nonce commitment)
-	MessageToSign         []byte // The Solana transaction message bytes
-}
-
-// SignRound2Data holds what the CLI sends to complete FROST signing.
-type SignRound2Data struct {
-	SessionID  string // From SignRound1Response
-	PartialSig []byte // 32 bytes: z1 = r1 + k*s1 (bot's partial signature)
-}

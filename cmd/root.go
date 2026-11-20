@@ -5,11 +5,20 @@
 // All subcommands are registered here.
 // =============================================================================
 
+// Package cmd implements the botwallet commands with Cobra. A command
+// resolves the wallet it acts as (session.go), checks its arguments, calls
+// the Botwallet API (package api) and hands the result to package output,
+// which prints JSON or, with --human, text for people. Every failure ends
+// in exitError (errors.go), with exit code 1.
+//
+// Besides one file per command group, the package has utilities.go (ping,
+// lookup, version and the balance shortcut) and the Key 1 signing flow of
+// the confirm commands: frost_sign.go, signing_intent.go and
+// signing_errors.go.
 package cmd
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -99,11 +108,12 @@ Quick Start:
 
 Commands:
   register  Create a new wallet (alias: wallet create)
-  wallet    Manage wallets (create, info, balance, list, use, deposit, owner, backup, export, import)
+  wallet    Manage wallets (create, info, balance, list, use, deposit, owner, rename, backup, export, import)
   pay       Send payments (two-step: pay → pay confirm)
   paylink   Create payment links to earn money
   fund      Request funds from your human owner
   withdraw  Withdraw USDC (two-step: withdraw → owner approves → withdraw confirm)
+  x402      Pay for x402 APIs (two-step: x402 fetch → x402 fetch confirm)
 
 Utilities:
   history   Transaction history
@@ -113,6 +123,7 @@ Utilities:
   events    Check notifications (approvals, deposits, etc.)
   lookup    Check if recipient exists
   ping      Test API connectivity
+  version   Print version information
   docs      Full documentation`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		output.SetHumanOutput(humanFlag)
@@ -120,19 +131,39 @@ Utilities:
 	},
 }
 
+// localFilesAnnotation set to "none" marks a command that never reads or
+// writes the local wallet files, so it runs without a folder for them.
+const localFilesAnnotation = "botwallet.local-files"
+
 // requireConfigDir stops early when there is no safe folder for wallet keys
 // (no HOME and no BOTWALLET_HOME), instead of failing halfway through a
 // command. Commands that never touch local files are exempt.
 func requireConfigDir(cmd *cobra.Command) {
-	switch cmd.Name() {
-	case "version", "docs", "help", "completion":
+	if !usesLocalFiles(cmd) {
 		return
 	}
 	if _, err := config.ResolveConfigDir(); err != nil {
-		output.APIError("NO_HOME_DIR", err.Error(),
-			"Set HOME, or set "+config.ConfigDirEnv+" to the absolute path of a private folder for Botwallet keys", nil)
-		os.Exit(1)
+		exitError("NO_HOME_DIR", err.Error(), noHomeDirHowToFix, nil)
 	}
+}
+
+// usesLocalFiles reports whether cmd may read or write the local wallet
+// files. Commands marked with localFilesAnnotation do not, and neither do
+// Cobra's own top-level commands: help, completion (and its bash, zsh, ...
+// subcommands) and the hidden __complete that shell completion runs.
+func usesLocalFiles(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Annotations[localFilesAnnotation] == "none" {
+			return false
+		}
+		if c.HasParent() && !c.Parent().HasParent() {
+			switch c.Name() {
+			case "help", "completion", cobra.ShellCompRequestCmd:
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // Execute runs the CLI
@@ -147,18 +178,24 @@ func Execute() error {
 	if err != nil {
 		// Cobra-level error (arg/flag parsing failed before PersistentPreRun).
 		// PersistentPreRun hasn't run, so humanFlag may not be applied yet.
-		// Scan os.Args directly to detect --human.
-		for _, arg := range os.Args {
-			if arg == "--human" {
-				output.SetHumanOutput(true)
-				break
-			}
-		}
-		output.APIError("INVALID_USAGE", err.Error(),
+		applyHumanFlagFromArgs()
+		exitError("INVALID_USAGE", err.Error(),
 			"Run the command with --help for usage information", nil)
 		return err
 	}
 	return nil
+}
+
+// applyHumanFlagFromArgs turns on human output if --human is on the
+// command line. It is for errors Cobra reports while parsing arguments,
+// before PersistentPreRun has applied the parsed flag.
+func applyHumanFlagFromArgs() {
+	for _, arg := range os.Args {
+		if arg == "--human" {
+			output.SetHumanOutput(true)
+			return
+		}
+	}
 }
 
 func init() {
@@ -216,286 +253,4 @@ func init() {
 	rootCmd.AddCommand(pingCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(docsCmd)
-}
-
-// =============================================================================
-// Ping Command
-// =============================================================================
-
-var pingCmd = &cobra.Command{
-	Use:   "ping",
-	Short: "Test connectivity to the Botwallet API",
-	Long: `Test connectivity to the Botwallet API.
-
-Use this to verify the API is reachable and check the current version.
-No authentication required.`,
-	Example: "  botwallet ping",
-	Run: func(cmd *cobra.Command, args []string) {
-		client := getClient()
-
-		result, err := client.Ping()
-		if err != nil {
-			handleAPIError(err)
-			return
-		}
-
-		if output.IsHumanOutput() {
-			output.SuccessMsg("API is reachable!")
-			output.KeyValue("Version", result["version"])
-			output.KeyValue("Timestamp", result["timestamp"])
-			return
-		}
-
-		output.JSON(result)
-	},
-}
-
-// =============================================================================
-// Lookup Command
-// =============================================================================
-
-var lookupCmd = &cobra.Command{
-	Use:   "lookup <username>",
-	Short: "Check if a recipient exists",
-	Long: `Check if a recipient exists before sending payment.
-
-Use this to verify a recipient's username and type (merchant or agent)
-before making a payment.`,
-	Example: `  botwallet lookup @botverse
-  botwallet lookup @claude-research`,
-	Args: cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
-
-		// Strip @ prefix if user typed @username (allows both @user and user)
-		username := stripAtPrefix(args[0])
-		client := getClient()
-
-		result, err := client.Lookup(username)
-		if err != nil {
-			handleAPIError(err)
-			return
-		}
-
-		output.FormatLookup(result)
-	},
-}
-
-// =============================================================================
-// Version Command
-// =============================================================================
-
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print version information (also: botwallet --version)",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(versionInfo())
-	},
-}
-
-// =============================================================================
-// Balance Shortcut
-// =============================================================================
-
-// balanceCmd is a hidden shortcut for 'wallet balance', which agents often
-// try first as 'botwallet balance'.
-var balanceCmd = &cobra.Command{
-	Use:    "balance",
-	Short:  "Same as 'wallet balance'",
-	Hidden: true,
-	Args:   cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		walletBalanceCmd.Run(cmd, args)
-	},
-}
-
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-// currentWallet returns the wallet this command acts as (see
-// config.ResolveWallet). If --wallet is unknown or conflicts with the API
-// key, it prints the error and exits.
-func currentWallet() *config.ResolvedWallet {
-	w, err := config.ResolveWallet(apiKeyFlag, walletFlag)
-	if err != nil {
-		exitWalletError(err)
-	}
-	return w
-}
-
-// exitWalletError prints an error about which wallet to use, or about the
-// local wallet files, and exits.
-func exitWalletError(err error) {
-	var notFound *config.WalletNotFoundError
-	var conflict *config.WalletConflictError
-	var noLocal *config.NoLocalWalletError
-
-	code, howToFix := "CONFIG_ERROR", "Check "+config.ConfigPath()
-	switch {
-	case errors.As(err, &notFound):
-		code, howToFix = "WALLET_NOT_FOUND", "Use 'botwallet wallet list' to see available wallets"
-	case errors.As(err, &conflict):
-		code = "WALLET_CONFLICT"
-		howToFix = fmt.Sprintf("Use one wallet: drop --wallet to use the key from %s, or remove that key to use --wallet %s",
-			conflict.KeySource, conflict.Wallet)
-	case errors.As(err, &noLocal):
-		code = "NO_LOCAL_WALLET"
-		howToFix = fmt.Sprintf("Use --wallet <name> for a wallet in 'botwallet wallet list' (and remove the key from %s), "+
-			"or import this wallet with 'botwallet wallet import'", noLocal.KeySource)
-	case errors.Is(err, config.ErrNoWallet):
-		code, howToFix = "NO_WALLET", "Run 'botwallet wallet create' first, or use --wallet flag"
-	case errors.Is(err, config.ErrNoHomeDir):
-		code, howToFix = "NO_HOME_DIR", "Set HOME, or set "+config.ConfigDirEnv+" to the absolute path of a private folder for Botwallet keys"
-	}
-	output.APIError(code, err.Error(), howToFix, nil)
-	os.Exit(1)
-}
-
-// getClient creates an API client with the configured API key
-func getClient() *api.Client {
-	apiKey := currentWallet().APIKey
-	baseURL := config.GetBaseURL(baseURLFlag)
-
-	if baseURL != "" {
-		return api.NewClientWithURL(apiKey, baseURL)
-	}
-	return api.NewClient(apiKey)
-}
-
-// getClientNoAuth creates an API client without authentication.
-// Used for unauthenticated actions like wallet_import_key.
-func getClientNoAuth() *api.Client {
-	baseURL := config.GetBaseURL(baseURLFlag)
-	if baseURL != "" {
-		return api.NewClientWithURL("", baseURL)
-	}
-	return api.NewClient("")
-}
-
-// requireAPIKey ensures an API key is available
-// Returns true if API key exists, false if missing (and outputs error)
-func requireAPIKey() bool {
-	w := currentWallet()
-	if w.APIKey == "" {
-		if w.ConfigErr != nil {
-			exitWalletError(w.ConfigErr)
-			return false
-		}
-		wallets, _ := config.ListWallets()
-
-		howToFix := "Set BOTWALLET_API_KEY environment variable, use --api-key flag, or create a wallet"
-		if len(wallets) > 0 {
-			var names []string
-			for _, w := range wallets {
-				names = append(names, w.LocalName)
-			}
-			howToFix = fmt.Sprintf("Use --wallet flag to select a wallet. Available: %v", names)
-		}
-
-		output.APIError(
-			"NO_API_KEY",
-			"API key required",
-			howToFix,
-			map[string]interface{}{
-				"config_path": config.ConfigPath(),
-				"example":     "botwallet --api-key bw_bot_xxx wallet balance",
-				"env_var":     "BOTWALLET_API_KEY",
-				"no_wallet":   "If you don't have a wallet yet, run: botwallet wallet create --name \"YourBotName\"",
-			},
-		)
-		os.Exit(1)
-		return false
-	}
-	return true
-}
-
-// handleAPIError handles API errors and outputs them appropriately
-func handleAPIError(err error) {
-	var apiErr *api.APIError
-	if errors.As(err, &apiErr) {
-		// Provide default how_to_fix if API didn't supply one
-		howToFix := apiErr.HowToFix
-		if howToFix == "" {
-			howToFix = getDefaultHowToFix(apiErr.Code, apiErr.Details)
-		}
-		// Transform terminology for consistency
-		message := transformErrorMessage(apiErr.Message)
-		output.APIError(apiErr.Code, message, howToFix, apiErr.Details)
-	} else {
-		output.APIError("CLI_ERROR", err.Error(), "Check your network connection and try again", nil)
-	}
-	os.Exit(1)
-}
-
-// transformErrorMessage updates error messages to use current CLI terminology
-func transformErrorMessage(msg string) string {
-	// Replace "Payment request" with "Paylink" for consistency
-	msg = strings.ReplaceAll(msg, "Payment request", "Paylink")
-	msg = strings.ReplaceAll(msg, "payment request", "paylink")
-	return msg
-}
-
-// stripAtPrefix removes leading @ from usernames for API calls
-// This allows users to type @username or username - both will work
-func stripAtPrefix(username string) string {
-	return strings.TrimPrefix(username, "@")
-}
-
-// getDefaultHowToFix provides default fix suggestions for common errors
-func getDefaultHowToFix(code string, details map[string]interface{}) string {
-	switch code {
-	case "INSUFFICIENT_FUNDS":
-		if url, ok := details["funding_url"].(string); ok {
-			return "Add funds via " + url + " or use 'botwallet fund ask' command"
-		}
-		return "Add funds to your wallet using 'botwallet wallet deposit' or 'botwallet fund ask'"
-	case "RECIPIENT_NOT_FOUND":
-		return "Use 'botwallet lookup <username>' to verify the recipient exists"
-	case "VALIDATION_ERROR":
-		return "Check command parameters and try again"
-	case "INVALID_STATUS":
-		return "Check its current status first ('botwallet pay list --id <id>' for a payment, 'botwallet withdraw get <id>' for a withdrawal)"
-	case "UNAUTHORIZED":
-		return "Check your API key is correct. Use --api-key flag or set BOTWALLET_API_KEY"
-	case "DAILY_LIMIT_EXCEEDED":
-		return "Wait until tomorrow or ask your owner to increase your daily limit"
-	case "APPROVAL_REQUIRED":
-		return "Share the approval_url with your human owner to approve this action"
-	case "WALLET_NOT_CLAIMED":
-		claimURL, hasURL := details["claim_url"].(string)
-		claimCode, hasCode := details["claim_code"].(string)
-		pledgedTo, hasPledged := details["pledged_to"].(string)
-
-		if hasURL && hasCode {
-			msg := fmt.Sprintf("⚠️ BLOCKED: Your wallet must be claimed by a human owner first! "+
-				"Tell your human: \"Please claim my wallet at %s using code %s\"", claimURL, claimCode)
-			if hasPledged && pledgedTo != "" {
-				msg += fmt.Sprintf(" (Pledged to: %s)", pledgedTo)
-			}
-			return msg
-		}
-		return "Your wallet needs to be claimed by a human owner. Run 'botwallet wallet info' to get the claim URL and code, then ask your human to claim it."
-	case "WALLET_ALREADY_CLAIMED":
-		return "This wallet is already claimed. Ask your owner to release it from their Human Portal first."
-	// Codes newer servers send. Their replies carry their own how_to_fix;
-	// these are for one that does not.
-	case "WALLET_SUSPENDED":
-		return "Your owner has frozen this wallet, so it can't send money. Ask them to unfreeze it in the Botwallet dashboard, then run the same command again"
-	case "IDEMPOTENCY_KEY_CONFLICT":
-		return "If you are retrying the same request, run it again with the same arguments and --idempotency-key to get its result. " +
-			"Otherwise use a new, unique key (for example a UUID) for each payment or withdrawal"
-	case "DEPRECATED":
-		return "Botwallet no longer supports what this version of the CLI asked for. Update the CLI (npm install -g @botwallet/agent-cli@latest), then try again"
-	case "SIGNING_IN_PROGRESS", "SUBMISSION_UNCONFIRMED":
-		check := "'botwallet pay list --id <id>' for a payment, 'botwallet withdraw get <id>' for a withdrawal"
-		if c, _ := details["check_command"].(string); c != "" {
-			check = "'" + c + "'"
-		}
-		return "It is on its way and may still go through, so do not pay again. Check its status in about a minute with " + check
-	default:
-		return ""
-	}
 }

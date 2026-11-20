@@ -12,11 +12,18 @@
 
 const { spawn } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const { downloadBinary, nativeBinaryPath } = require('../scripts/install');
 
 const isWindows = process.platform === 'win32';
 // bin/botwallet-native (bin/botwallet.exe on Windows), never this file
 const binaryPath = nativeBinaryPath(__dirname);
+
+// Signals sent to this launcher (Ctrl+C, a timeout that stops the command)
+// are passed on, so the CLI does not keep running, and maybe finish a
+// payment, after the caller has given up on it. On Windows, kill() ends
+// the CLI at once.
+const FORWARDED_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 
 function stderr(msg) {
   process.stderr.write(msg + '\n');
@@ -28,6 +35,10 @@ function runBinary() {
     shell: false
   });
 
+  for (const signal of FORWARDED_SIGNALS) {
+    process.on(signal, () => child.kill(signal));
+  }
+
   child.on('error', (error) => {
     if (error.code === 'EACCES') {
       stderr('Permission denied. Try: chmod +x ' + binaryPath);
@@ -37,8 +48,13 @@ function runBinary() {
     process.exit(1);
   });
 
-  child.on('exit', (code) => {
-    process.exit(code || 0);
+  // Exit as the CLI did. A CLI killed by a signal did not succeed: exit
+  // with 128 + the signal's number, as shells report it.
+  child.on('exit', (code, signal) => {
+    if (signal) {
+      process.exit(128 + (os.constants.signals[signal] || 0));
+    }
+    process.exit(code === null ? 1 : code);
   });
 }
 

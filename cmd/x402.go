@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/botwallet-co/agent-cli/api"
-	"github.com/botwallet-co/agent-cli/config"
 	"github.com/botwallet-co/agent-cli/output"
 	"github.com/botwallet-co/agent-cli/x402"
 )
@@ -35,7 +34,7 @@ before committing to any payment.
 
 Subcommands:
   fetch     Probe a URL or pay+fetch data
-  discover  Search x402 Bazaar for paid APIs`,
+  discover  List verified paid APIs, or search the x402 Bazaar with --bazaar`,
 	Example: `  # Window shopping: probe multiple APIs
   botwallet x402 fetch https://api.weather.com/forecast
   botwallet x402 fetch https://api.other-weather.com/data
@@ -59,11 +58,15 @@ var x402FetchCmd = &cobra.Command{
 	Long: `Probe an x402 API to see its price without paying.
 
 This command:
-1. Makes a direct HTTP request to the URL (no payment)
+1. Makes a direct HTTP request to the URL (no payment), following up to 5
+   redirects to public addresses
 2. If the API is free (200), returns the data immediately
 3. If the API requires payment (402), parses the price and:
+   - Stops unless the URL that asked for payment is a public HTTPS address,
+     the only kind Botwallet pays, on the host you probed. After a redirect
+     to another host, probe that URL directly
    - Checks your guard rails (auto-approve, limits, budget)
-   - Creates a payment intent on the server
+   - Creates a payment intent on the server for that URL
    - Returns fetch_id, price, and status
 
 No money is spent. The agent can probe many APIs to compare prices.
@@ -89,7 +92,12 @@ func runX402Fetch(cmd *cobra.Command, args []string) {
 
 	// Validate URL locally before any network calls
 	if err := x402.ValidateURL(targetURL); err != nil {
-		output.ValidationError(fmt.Sprintf("Invalid URL: %s", err), "Provide a valid public HTTP(S) URL")
+		exitValidationError(fmt.Sprintf("Invalid URL: %s", err), "Provide a valid public HTTP(S) URL")
+		return
+	}
+	headers, err := parseHeaders(x402FetchHeaders)
+	if err != nil {
+		exitValidationError(err.Error(), headerHowToFix)
 		return
 	}
 
@@ -97,11 +105,9 @@ func runX402Fetch(cmd *cobra.Command, args []string) {
 		output.InfoMsg("Probing %s ...", targetURL)
 	}
 
-	headers := parseHeaders(x402FetchHeaders)
-
 	resp, err := x402.Fetch(targetURL, x402FetchMethod, headers, x402FetchBody)
 	if err != nil {
-		output.APIError("FETCH_FAILED", fmt.Sprintf("Failed to reach %s: %s", targetURL, err), "Check the URL and try again", nil)
+		exitError("FETCH_FAILED", fmt.Sprintf("Failed to reach %s: %s", targetURL, err), "Check the URL and try again", nil)
 		return
 	}
 	defer resp.Body.Close()
@@ -109,7 +115,7 @@ func runX402Fetch(cmd *cobra.Command, args []string) {
 	if resp.StatusCode != http.StatusPaymentRequired {
 		body, readErr := x402.ReadResponseBody(resp)
 		if readErr != nil && body == "" {
-			output.APIError("READ_FAILED", readErr.Error(), "The API response could not be read", nil)
+			exitError("READ_FAILED", readErr.Error(), "The API response could not be read", nil)
 			return
 		}
 
@@ -131,28 +137,14 @@ func runX402Fetch(cmd *cobra.Command, args []string) {
 			result["message"] = fmt.Sprintf("API returned HTTP %d — no payment was required but the request failed. Try a different HTTP method (--method) or check the URL.", resp.StatusCode)
 		}
 
-		if !output.IsHumanOutput() {
-			output.JSON(result)
-		} else {
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				output.SuccessMsg("API returned data (free, no payment required)")
-			} else {
-				output.WarningMsg("API returned HTTP %d (no payment required)", resp.StatusCode)
-			}
-			output.KeyValue("URL", targetURL)
-			output.KeyValue("Status", resp.StatusCode)
-			if body != "" {
-				fmt.Println()
-				fmt.Println(body)
-			}
-		}
+		output.FormatX402Free(result, body)
 		return
 	}
 
 	// 402 Payment Required — parse x402 response
 	pr, err := x402.Parse402Response(resp)
 	if err != nil {
-		output.APIError("X402_PARSE_ERROR", fmt.Sprintf("Could not parse 402 response: %s", err),
+		exitError("X402_PARSE_ERROR", fmt.Sprintf("Could not parse 402 response: %s", err),
 			"The API may not implement the x402 standard correctly", nil)
 		return
 	}
@@ -169,30 +161,46 @@ func runX402Fetch(cmd *cobra.Command, args []string) {
 			"available_networks": networks,
 			"options":            x402.AllSummaries(pr),
 		}
-		if !output.IsHumanOutput() {
-			output.JSON(result)
-		} else {
-			output.WarningMsg("API requires payment but offers no option to pay in USDC on Solana")
-			output.KeyValue("Available networks", strings.Join(networks, ", "))
-			output.Tip("Botwallet pays in USDC on Solana only.")
-		}
+		output.FormatX402Incompatible(result)
 		return
 	}
 
-	if !requireAPIKey() {
+	// After any redirects, the request that got the 402 is the one to pay:
+	// the paid request follows no redirects.
+	paidURL, paidMethod := resp.Request.URL.String(), resp.Request.Method
+
+	// The agent chose the host it probed, and the headers it passes to
+	// x402 fetch confirm are meant for that host. A request for payment
+	// from another host is not prepared: the agent probes that URL itself.
+	if err := x402.CheckAnsweringHost(targetURL, resp.Request.URL); err != nil {
+		exitError("VALIDATION_ERROR",
+			fmt.Sprintf("Botwallet cannot pay this API: %s (%s). Nothing was prepared or paid", err, paidURL),
+			"To pay that host, probe its URL directly and pass only the headers meant for it",
+			map[string]interface{}{"url": paidURL})
 		return
 	}
-	client := getClient()
 
-	serverResult, err := client.X402Prepare(
-		targetURL,
-		solOpt.PayTo,
-		solOpt.GetAmount(),
-		x402.NormalizeSolanaNetwork(solOpt.Network),
-		x402FetchMethod,
-		solOpt.Asset,
-		solOpt.Scheme,
-	)
+	// Refuse before anything is prepared or sent to the owner for approval:
+	// x402 fetch confirm would never send this request.
+	if err := x402.CheckPaidRequest(paidURL, paidMethod, headers); err != nil {
+		exitError("VALIDATION_ERROR",
+			fmt.Sprintf("Botwallet cannot pay this API: %s. Nothing was prepared or paid", err),
+			"Botwallet pays only APIs at a public HTTPS address. Probe the API's https:// URL if it has one",
+			map[string]interface{}{"url": paidURL})
+		return
+	}
+
+	client := authedClient()
+
+	serverResult, err := client.X402Prepare(api.X402PrepareRequest{
+		URL:     paidURL,
+		PayTo:   solOpt.PayTo,
+		Amount:  solOpt.GetAmount(),
+		Network: x402.NormalizeSolanaNetwork(solOpt.Network),
+		Method:  paidMethod,
+		Asset:   solOpt.Asset,
+		Scheme:  solOpt.Scheme,
+	})
 	if err != nil {
 		handleAPIError(err)
 		return
@@ -214,13 +222,20 @@ var x402FetchConfirmCmd = &cobra.Command{
 
 This command:
 1. Retrieves the payment intent from the server
-2. Builds a USDC transfer transaction
-3. FROST threshold signs it (agent + server cooperate)
-4. Sends the signed payment to the external API
-5. Returns the API response data
+2. Checks that the paid request can be sent: an HTTPS URL at a public
+   address and a valid method and headers. If not, it stops before
+   anything is signed or paid
+3. Builds a USDC transfer transaction
+4. FROST threshold signs it (agent + server cooperate)
+5. Sends the signed payment to the external API, and only there: a
+   redirect is the API's answer and is not followed
+6. Returns the API response data
 
-If the original probe used --method, --body, or --header, pass them
-again here so the paid request matches what the API expects.
+The paid request goes to the URL, with the method, that the probe
+recorded (x402 fetch records a URL only on the host it probed). Its body
+and headers are not kept: if the probe used --body or --header, pass
+them again here so the paid request matches what the API expects.
+--method overrides the recorded method.
 
 Only works for intents with status:
 - PRE-APPROVED (guard rails passed)
@@ -230,8 +245,8 @@ Payment intents expire after 48 hours.`,
 	Example: `  # Simple GET:
   botwallet x402 fetch confirm <fetch_id>
 
-  # POST with body (same flags as the original fetch):
-  botwallet x402 fetch confirm <fetch_id> --method POST --body '{"q":"test"}'`,
+  # After a POST probe, pass its body (and any --header) again:
+  botwallet x402 fetch confirm <fetch_id> --body '{"q":"test"}'`,
 	Args: cobra.ExactArgs(1),
 	Run:  runX402FetchConfirm,
 }
@@ -239,21 +254,23 @@ Payment intents expire after 48 hours.`,
 func runX402FetchConfirm(cmd *cobra.Command, args []string) {
 	fetchID := args[0]
 
-	if !requireAPIKey() {
+	paidHeaders, err := parseHeaders(x402ConfirmHeaders)
+	if err != nil {
+		exitValidationError(err.Error()+". Nothing was signed or paid", headerHowToFix)
 		return
 	}
+
+	wallet, client := authedWallet()
 
 	target := x402Target(fetchID)
 
 	// Load Key 1 first: if it is missing or belongs to another wallet,
 	// stop before the server starts processing the payment.
-	signer, err := loadSigningWallet()
+	signer, err := loadSigningWallet(wallet)
 	if err != nil {
 		exitSigningError(err, target)
 		return
 	}
-
-	client := getClient()
 
 	if output.IsHumanOutput() {
 		output.InfoMsg("Confirming x402 payment %s...", fetchID)
@@ -268,35 +285,47 @@ func runX402FetchConfirm(cmd *cobra.Command, args []string) {
 
 	messageB64, ok := confirmResult["message"].(string)
 	if !ok || messageB64 == "" {
-		output.APIError("SIGNING_ERROR", "Server did not return a message to sign",
+		exitError("SIGNING_ERROR", "Server did not return a message to sign",
 			"The payment intent may have expired. Run 'x402 fetch' again", nil)
 		return
 	}
 	transactionID, ok := confirmResult["transaction_id"].(string)
 	if !ok || transactionID == "" {
-		output.APIError("SIGNING_ERROR", "Server did not return a transaction_id",
+		exitError("SIGNING_ERROR", "Server did not return a transaction_id",
 			"The payment intent may have expired. Run 'x402 fetch' again", nil)
 		return
 	}
 
-	if output.IsHumanOutput() {
-		toAddr, _ := confirmResult["to_address"].(string)
-		amountUSDC, _ := confirmResult["amount_usdc"].(float64)
-		feeUSDC, _ := confirmResult["fee_usdc"].(float64)
-		totalUSDC, _ := confirmResult["total_usdc"].(float64)
-		apiURL, _ := confirmResult["url"].(string)
-
-		feeLine := fmt.Sprintf("$%.2f USDC", feeUSDC)
-		if bd, ok := confirmResult["fee_breakdown"].(map[string]interface{}); ok {
-			if sf, ok := bd["account_setup_fee_usdc"].(float64); ok && sf > 0 {
-				feeLine += fmt.Sprintf(" (incl. $%.2f account setup)", sf)
-			}
-		}
-		summary := fmt.Sprintf("API:    %s\nTo:     %s\nAmount: $%.2f USDC\nFee:    %s\nTotal:  $%.2f USDC",
-			apiURL, truncateAddr(toAddr), amountUSDC, feeLine, totalUSDC)
-		output.Box("x402 Payment", summary)
-		fmt.Println()
+	// The paid request is checked before Key 1 signs: one that cannot be
+	// sent (no URL, plain HTTP, a private address, a bad method or header)
+	// must never be paid for. The fetch stays pending on the server, so
+	// confirm can run again once a bad --method or --header is fixed.
+	targetURL, _ := confirmResult["url"].(string)
+	if targetURL == "" {
+		exitError("X402_ERROR", "Server did not return the target URL",
+			"The payment intent may be corrupted. Run 'x402 fetch' again", nil)
+		return
 	}
+
+	// Method: CLI flag > server-stored > default GET
+	method, _ := confirmResult["method"].(string)
+	if x402ConfirmMethod != "" {
+		method = x402ConfirmMethod
+	}
+	if method == "" {
+		method = "GET"
+	}
+
+	if err := x402.CheckPaidRequest(targetURL, method, paidHeaders); err != nil {
+		exitError("VALIDATION_ERROR",
+			fmt.Sprintf("Refusing to pay for this request: %s. Nothing was signed or paid", err),
+			fmt.Sprintf("If a --method or --header you passed is the problem, fix it and run '%s' again. "+
+				"Botwallet pays only APIs at a public HTTPS address", target.retry),
+			map[string]interface{}{"fetch_id": fetchID})
+		return
+	}
+
+	output.X402ConfirmSummary(confirmResult)
 
 	intent, err := x402Intent(confirmResult)
 	if err != nil {
@@ -313,37 +342,19 @@ func runX402FetchConfirm(cmd *cobra.Command, args []string) {
 
 	signedTxB64, ok := signResult["signed_transaction"].(string)
 	if !ok || signedTxB64 == "" {
-		output.APIError("SIGNING_ERROR", "Server did not return a signed transaction",
+		exitError("SIGNING_ERROR", "Server did not return a signed transaction",
 			target.retryAdvice(), nil)
 		return
-	}
-
-	targetURL, _ := confirmResult["url"].(string)
-	if targetURL == "" {
-		output.APIError("X402_ERROR", "Server did not return the target URL",
-			"The payment intent may be corrupted. Run 'x402 fetch' again", nil)
-		return
-	}
-
-	// Method: CLI flag > server-stored > default GET
-	method, _ := confirmResult["method"].(string)
-	if x402ConfirmMethod != "" {
-		method = x402ConfirmMethod
-	}
-	if method == "" {
-		method = "GET"
 	}
 
 	network, _ := confirmResult["network"].(string)
 
 	xPayment, err := x402.BuildXPaymentHeader(signedTxB64, network)
 	if err != nil {
-		output.APIError("X402_ERROR", fmt.Sprintf("Failed to build payment header: %v", err),
+		exitError("X402_ERROR", fmt.Sprintf("Failed to build payment header: %v", err),
 			"This is unexpected. Try again", nil)
 		return
 	}
-
-	paidHeaders := parseHeaders(x402ConfirmHeaders)
 
 	if output.IsHumanOutput() {
 		output.InfoMsg("Fetching data with payment...")
@@ -359,7 +370,7 @@ func runX402FetchConfirm(cmd *cobra.Command, args []string) {
 				output.WarningMsg("Additionally failed to report settlement: %v", settleErr)
 			}
 		}
-		output.APIError("X402_FETCH_FAILED", fmt.Sprintf("Failed to reach API with payment: %s", err),
+		exitError("X402_FETCH_FAILED", fmt.Sprintf("Failed to reach API with payment: %s", err),
 			"The payment transaction may still settle on-chain. Check your balance.", details)
 		return
 	}
@@ -368,6 +379,8 @@ func runX402FetchConfirm(cmd *cobra.Command, args []string) {
 	body, readErr := x402.ReadResponseBody(apiResp)
 	if readErr != nil && body == "" {
 		body = fmt.Sprintf("(failed to read response: %v)", readErr)
+	} else if readErr != nil {
+		output.WarningMsg("Only part of the API's answer is shown: %v", readErr)
 	}
 
 	// Step 2d: Report outcome to Botwallet server
@@ -391,14 +404,11 @@ func runX402FetchConfirm(cmd *cobra.Command, args []string) {
 		if body != "" {
 			result["response_body"] = body
 		}
-		if !output.IsHumanOutput() {
-			output.JSON(result)
-		} else {
-			output.ErrorMsg("API returned error %d after payment was sent", apiResp.StatusCode)
-			if body != "" {
-				fmt.Println(body)
-			}
+		var location string
+		if apiResp.StatusCode >= 300 && apiResp.StatusCode < 400 {
+			location = apiResp.Header.Get("Location")
 		}
+		output.FormatX402PaidError(result, body, location)
 		return
 	}
 
@@ -487,14 +497,9 @@ func runX402Discover(cmd *cobra.Command, args []string) {
 		output.InfoMsg("Loading verified x402 API catalog...")
 	}
 
-	baseURL := config.GetBaseURL(baseURLFlag)
-	if baseURL == "" {
-		baseURL = api.DefaultBaseURL
-	}
-
-	entries, err := x402.DiscoverCatalog(baseURL, query)
+	entries, err := anonClient().X402Catalog(query)
 	if err != nil {
-		output.APIError("CATALOG_FAILED",
+		exitError("CATALOG_FAILED",
 			fmt.Sprintf("Failed to load catalog: %s", err),
 			"Check your network connection or use --bazaar to query the Coinbase facilitator directly",
 			nil,
@@ -511,7 +516,7 @@ func runX402DiscoverBazaar(query string) {
 		facilitatorURL = os.Getenv("X402_FACILITATOR_URL")
 	}
 	if facilitatorURL == "" {
-		facilitatorURL = x402.DefaultFacilitatorURL()
+		facilitatorURL = x402.DefaultFacilitatorURL
 	}
 
 	if output.IsHumanOutput() {
@@ -520,7 +525,7 @@ func runX402DiscoverBazaar(query string) {
 
 	dr, err := x402.DiscoverAPIs(facilitatorURL, x402DiscoverLimit, x402DiscoverOffset)
 	if err != nil {
-		output.APIError("DISCOVERY_FAILED",
+		exitError("DISCOVERY_FAILED",
 			fmt.Sprintf("Failed to query facilitator: %s", err),
 			"Check your network connection or try a different facilitator with --facilitator <url>",
 			map[string]interface{}{
@@ -545,15 +550,23 @@ func runX402DiscoverBazaar(query string) {
 		x402DiscoverLimit, x402DiscoverOffset)
 }
 
-func parseHeaders(raw []string) map[string]string {
+// headerHowToFix is the advice for a --header that is not "Name: value".
+const headerHowToFix = "Pass each header as --header \"Name: value\", e.g. --header \"Accept: application/json\""
+
+// parseHeaders reads --header values ("Name: value"). One without a colon
+// or a name is an error, not dropped: the API could otherwise be paid for a
+// request that lacks a header it needs.
+func parseHeaders(raw []string) (map[string]string, error) {
 	headers := make(map[string]string)
 	for _, h := range raw {
-		parts := strings.SplitN(h, ":", 2)
-		if len(parts) == 2 {
-			headers[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		name, value, ok := strings.Cut(h, ":")
+		name = strings.TrimSpace(name)
+		if !ok || name == "" {
+			return nil, fmt.Errorf("invalid --header %q", h)
 		}
+		headers[name] = strings.TrimSpace(value)
 	}
-	return headers
+	return headers, nil
 }
 
 func isJSON(contentType string) bool {
@@ -566,13 +579,6 @@ func parseJSONBody(body string) interface{} {
 		return body
 	}
 	return parsed
-}
-
-func truncateAddr(addr string) string {
-	if len(addr) <= 16 {
-		return addr
-	}
-	return addr[:8] + "..." + addr[len(addr)-8:]
 }
 
 func init() {

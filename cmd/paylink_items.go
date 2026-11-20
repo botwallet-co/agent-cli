@@ -5,17 +5,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/botwallet-co/agent-cli/api"
 )
 
-// LineItem represents a single line in an invoice
-type LineItem struct {
-	Description    string `json:"description"`
-	Quantity       int    `json:"quantity"`
-	UnitPriceCents int64  `json:"unit_price_cents"`
-	TotalCents     int64  `json:"total_cents"`
-}
-
-// ParseItem parses a single --item flag value into a LineItem.
+// parseItem parses a single --item flag value into a line item.
 //
 // Accepted formats:
 //
@@ -25,15 +19,15 @@ type LineItem struct {
 // Price accepts: 5, 5.00 (also $5, $5.00 if properly quoted), with at most
 // 2 decimal places: line items are stored in whole cents.
 // Descriptions containing commas are handled correctly (parsing works from the right).
-func ParseItem(raw string) (LineItem, error) {
+func parseItem(raw string) (api.LineItem, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return LineItem{}, fmt.Errorf("item cannot be empty")
+		return api.LineItem{}, fmt.Errorf("item cannot be empty")
 	}
 
-	parts := splitAndTrim(raw)
+	parts := splitList(raw)
 	if len(parts) < 2 {
-		return LineItem{}, fmt.Errorf("cannot parse %q — expected \"description, price\"\n\nExamples:\n  --item \"API Calls, 5.00\"\n  --item \"Setup Fee, 10.00, 2\"", raw)
+		return api.LineItem{}, fmt.Errorf("cannot parse %q — expected \"description, price\"\n\nExamples:\n  --item \"API Calls, 5.00\"\n  --item \"Setup Fee, 10.00, 2\"", raw)
 	}
 
 	var description string
@@ -48,9 +42,9 @@ func ParseItem(raw string) (LineItem, error) {
 		if looksLikeQuantity(last) && looksLikePrice(secondToLast) {
 			// Clear 3-field format: description, price, quantity
 			quantity, _ = strconv.Atoi(last)
-			p, err := parsePrice(secondToLast)
+			p, err := parseCents(secondToLast)
 			if err != nil {
-				return LineItem{}, itemPriceError(secondToLast, raw, err)
+				return api.LineItem{}, itemPriceError(secondToLast, raw, err)
 			}
 			priceCents = p
 			description = strings.Join(parts[:len(parts)-2], ", ")
@@ -58,7 +52,7 @@ func ParseItem(raw string) (LineItem, error) {
 			// last is a bare integer but secondToLast is not a valid price.
 			// Ambiguous: could be "desc, broken_price, qty" or "desc_with_comma, integer_price".
 			// Require an explicit price format to resolve.
-			return LineItem{}, fmt.Errorf(
+			return api.LineItem{}, fmt.Errorf(
 				"ambiguous input %q — %q is not a valid price and %q could be a price or quantity\n\n"+
 					"If using 3 fields (description, price, quantity), fix the price:\n"+
 					"  --item \"description, 5.00, 2\"\n\n"+
@@ -69,36 +63,36 @@ func ParseItem(raw string) (LineItem, error) {
 		} else {
 			// Last field is not a bare integer (has $ or decimal), so it's
 			// unambiguously a price. Everything before it is the description.
-			p, err := parsePrice(last)
+			p, err := parseCents(last)
 			if err != nil {
-				return LineItem{}, itemPriceError(last, raw, err)
+				return api.LineItem{}, itemPriceError(last, raw, err)
 			}
 			priceCents = p
 			description = strings.Join(parts[:len(parts)-1], ", ")
 		}
 	} else {
-		p, err := parsePrice(last)
+		p, err := parseCents(last)
 		if err != nil {
-			return LineItem{}, itemPriceError(last, raw, err)
+			return api.LineItem{}, itemPriceError(last, raw, err)
 		}
 		priceCents = p
 		description = parts[0]
 	}
 
 	if description == "" {
-		return LineItem{}, fmt.Errorf("item description is empty in %q", raw)
+		return api.LineItem{}, fmt.Errorf("item description is empty in %q", raw)
 	}
 	if priceCents <= 0 {
-		return LineItem{}, fmt.Errorf("price must be greater than $0.00 (got $%.2f) in %q", centsToDollars(priceCents), raw)
+		return api.LineItem{}, fmt.Errorf("price must be greater than $0.00 (got $%.2f) in %q", centsToDollars(priceCents), raw)
 	}
 	if quantity <= 0 {
-		return LineItem{}, fmt.Errorf("quantity must be at least 1 (got %d) in %q", quantity, raw)
+		return api.LineItem{}, fmt.Errorf("quantity must be at least 1 (got %d) in %q", quantity, raw)
 	}
 	if int64(quantity) > maxAmountCents/priceCents {
-		return LineItem{}, fmt.Errorf("item total is too large in %q", raw)
+		return api.LineItem{}, fmt.Errorf("item total is too large in %q", raw)
 	}
 
-	return LineItem{
+	return api.LineItem{
 		Description:    description,
 		Quantity:       quantity,
 		UnitPriceCents: priceCents,
@@ -106,19 +100,19 @@ func ParseItem(raw string) (LineItem, error) {
 	}, nil
 }
 
-// ParseItems parses all --item flag values and returns line items with
+// parseItems parses all --item flag values and returns line items with
 // their total in cents. Everything is summed in cents, so no float error
 // gets into the total.
-func ParseItems(items []string) ([]LineItem, int64, error) {
+func parseItems(items []string) ([]api.LineItem, int64, error) {
 	if len(items) == 0 {
 		return nil, 0, fmt.Errorf("no items provided")
 	}
 
-	var lineItems []LineItem
+	var lineItems []api.LineItem
 	var totalCents int64
 
 	for i, raw := range items {
-		item, err := ParseItem(raw)
+		item, err := parseItem(raw)
 		if err != nil {
 			return nil, 0, fmt.Errorf("--item #%d: %w", i+1, err)
 		}
@@ -132,28 +126,11 @@ func ParseItems(items []string) ([]LineItem, int64, error) {
 	return lineItems, totalCents, nil
 }
 
-func splitAndTrim(s string) []string {
-	parts := strings.Split(s, ",")
-	var result []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
-// parsePrice parses an --item price into whole cents (see parseCents).
-func parsePrice(s string) (int64, error) {
-	return parseCents(s)
-}
-
 // looksLikePrice returns true if s is written as a dollar amount, even one
-// ParseItem then refuses (negative, too large, fractions of a cent), so the
+// parseItem then refuses (negative, too large, fractions of a cent), so the
 // error names the real problem.
 func looksLikePrice(s string) bool {
-	_, err := parsePrice(s)
+	_, err := parseCents(s)
 	return !errors.Is(err, errAmountFormat)
 }
 

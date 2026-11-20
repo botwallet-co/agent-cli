@@ -23,9 +23,10 @@ type signingIntent struct {
 	maxFee    uint64 // in base units
 }
 
-// paymentIntent reads a pay or withdraw confirm response. The server moves
-// exactly amount_usdc to to_address and fee_usdc to Botwallet, in whole cents.
-func paymentIntent(confirm map[string]interface{}) (*signingIntent, error) {
+// exactTransferIntent reads a pay or withdraw confirm response. The server
+// moves exactly amount_usdc to to_address and fee_usdc to Botwallet, in
+// whole cents.
+func exactTransferIntent(confirm map[string]interface{}) (*signingIntent, error) {
 	intent, err := intentFromConfirm(confirm)
 	if err != nil {
 		return nil, err

@@ -1,14 +1,12 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/botwallet-co/agent-cli/output"
+	"github.com/botwallet-co/agent-cli/solana"
 )
 
 var (
@@ -57,11 +55,7 @@ You can pay:
 }
 
 func runPayCreate(cmd *cobra.Command, args []string) {
-	if !requireAPIKey() {
-		return
-	}
-
-	client := getClient()
+	client := authedClient()
 	var result map[string]interface{}
 	var err error
 
@@ -71,7 +65,7 @@ func runPayCreate(cmd *cobra.Command, args []string) {
 	} else {
 		// Pay by recipient + amount
 		if len(args) < 2 {
-			output.ValidationError("Missing required arguments", "Usage: botwallet pay <recipient> <amount> OR botwallet pay --paylink <id>")
+			exitValidationError("Missing required arguments", "Usage: botwallet pay <recipient> <amount> OR botwallet pay --paylink <id>")
 			return
 		}
 
@@ -86,8 +80,8 @@ func runPayCreate(cmd *cobra.Command, args []string) {
 
 		// The server pays anything shaped like an address as an address, so
 		// one that does not decode to 32 bytes must stop here.
-		if looksLikeSolanaAddress(to) && !isValidSolanaAddress(to) {
-			output.ValidationError("Invalid Solana address format", invalidAddressHowToFix)
+		if solana.LooksLikeAddress(to) && !solana.IsValidAddress(to) {
+			exitValidationError("Invalid Solana address format", invalidAddressHowToFix)
 			return
 		}
 
@@ -103,45 +97,21 @@ func runPayCreate(cmd *cobra.Command, args []string) {
 	output.FormatPayInitiated(result)
 }
 
+// stripAtPrefix removes leading @ from usernames for API calls
+// This allows users to type @username or username - both will work
+func stripAtPrefix(username string) string {
+	return strings.TrimPrefix(username, "@")
+}
+
 func init() {
 	payCmd.Flags().StringVar(&payNote, "note", "", "Note visible to recipient")
 	payCmd.Flags().StringVar(&payNote, "memo", "", "Note visible to recipient (alias for --note)")
 	payCmd.Flags().StringVar(&payReference, "reference", "", "Your internal reference ID")
 	payCmd.Flags().StringVar(&payPaylinkID, "paylink", "", "Pay a payment link by ID")
 	payCmd.Flags().StringVar(&payIdempotencyKey, "idempotency-key", "", "Idempotency key to prevent duplicate payments")
-	payCmd.Flags().MarkHidden("memo")
+	_ = payCmd.Flags().MarkHidden("memo")
 
-	// Intercept Cobra's flag parse errors to give a clear message when a
-	// negative number (e.g. -5.00) is mistakenly interpreted as a flag.
-	// SetFlagErrorFunc is Cobra's designated API for this — it only fires
-	// for the specific error, unlike FParseErrWhitelist which would suppress
-	// ALL unknown flags.
-	payCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		msg := err.Error()
-		// Detect pattern: "unknown shorthand flag: 'X' in -VALUE"
-		if strings.Contains(msg, "unknown shorthand flag") {
-			if idx := strings.Index(msg, " in "); idx >= 0 {
-				value := strings.TrimSpace(msg[idx+4:])
-				if _, parseErr := strconv.ParseFloat(value, 64); parseErr == nil {
-					// PersistentPreRun hasn't run yet because flag parsing
-					// failed before --human could be parsed. Scan os.Args
-					// directly to detect if the user passed --human.
-					for _, arg := range os.Args {
-						if arg == "--human" {
-							output.SetHumanOutput(true)
-							break
-						}
-					}
-					output.ValidationError(
-						"Amount must be a positive number",
-						"Got '"+value+"'. Use a positive number, e.g., botwallet pay @recipient 5.00",
-					)
-					return nil // ValidationError calls os.Exit(1), never reaches here
-				}
-			}
-		}
-		return err // All other flag errors pass through normally
-	})
+	payCmd.SetFlagErrorFunc(negativeAmountFlagError("botwallet pay @recipient 5.00"))
 }
 
 var payConfirmCmd = &cobra.Command{
@@ -171,28 +141,24 @@ Transactions expire after 48 hours.`,
   botwallet pay confirm <id>      # Step 2: Execute`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		wallet, client := authedWallet()
 
-		transactionId := args[0]
-		target := paymentTarget(transactionId)
+		transactionID := args[0]
+		target := paymentTarget(transactionID)
 
 		// Load Key 1 first: if it is missing or belongs to another wallet,
 		// stop before the server starts processing the payment.
-		signer, err := loadSigningWallet()
+		signer, err := loadSigningWallet(wallet)
 		if err != nil {
 			exitSigningError(err, target)
 			return
 		}
 
-		client := getClient()
-
 		if output.IsHumanOutput() {
-			output.InfoMsg("Retrieving transaction %s...", transactionId)
+			output.InfoMsg("Retrieving transaction %s...", transactionID)
 		}
 
-		confirmResult, err := client.ConfirmPayment(transactionId)
+		confirmResult, err := client.ConfirmPayment(transactionID)
 		if err != nil {
 			exitConfirmError(err, target)
 			return
@@ -200,44 +166,20 @@ Transactions expire after 48 hours.`,
 
 		messageB64, _ := confirmResult["message"].(string)
 		if messageB64 == "" {
-			output.APIError("SIGNING_ERROR", "Server did not return a message to sign",
+			exitError("SIGNING_ERROR", "Server did not return a message to sign",
 				"The transaction may have expired. Check with 'botwallet pay list'", nil)
 			return
 		}
 
-		if output.IsHumanOutput() {
-			toDisplay, _ := confirmResult["to"].(string)
-			if toDisplay == "" {
-				if addr, ok := confirmResult["to_address"].(string); ok && len(addr) > 8 {
-					toDisplay = addr[:8] + "..."
-				}
-			}
-			amountUSDC, _ := confirmResult["amount_usdc"].(float64)
-			feeUSDC, _ := confirmResult["fee_usdc"].(float64)
-			totalUSDC, _ := confirmResult["total_usdc"].(float64)
-			network, _ := confirmResult["network"].(string)
+		output.PaymentConfirmSummary(confirmResult)
 
-			feeLine := fmt.Sprintf("$%.2f USDC", feeUSDC)
-			if bd, ok := confirmResult["fee_breakdown"].(map[string]interface{}); ok {
-				if sf, ok := bd["account_setup_fee_usdc"].(float64); ok && sf > 0 {
-					feeLine += fmt.Sprintf(" (incl. $%.2f account setup)", sf)
-				}
-			}
-			summary := fmt.Sprintf("To:     @%s\nAmount: $%.2f USDC\nFee:    %s\nTotal:  $%.2f USDC", toDisplay, amountUSDC, feeLine, totalUSDC)
-			if network != "" {
-				summary += fmt.Sprintf("\nNetwork: %s", network)
-			}
-			output.Box("Confirm Payment", summary)
-			fmt.Println()
-		}
-
-		intent, err := paymentIntent(confirmResult)
+		intent, err := exactTransferIntent(confirmResult)
 		if err != nil {
 			exitSigningError(err, target)
 			return
 		}
 
-		submitResult, err := frostSignAndSubmit(client, transactionId, messageB64, signer, intent)
+		submitResult, err := frostSignAndSubmit(client, transactionID, messageB64, signer, intent)
 		if err != nil {
 			exitSigningError(err, target)
 			return
@@ -264,9 +206,7 @@ exactly what will happen before committing to a payment.`,
   botwallet pay preview @claude-research 5.50`,
 	Args: cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
 		// Strip @ prefix if user typed @username (allows both @user and user)
 		to := stripAtPrefix(args[0])
@@ -274,8 +214,6 @@ exactly what will happen before committing to a payment.`,
 		if !ok {
 			return
 		}
-
-		client := getClient()
 
 		result, err := client.CanIAfford(to, centsToDollars(amountCents))
 		if err != nil {
@@ -312,25 +250,22 @@ Use --status to filter:
 - completed: Successfully executed
 - failed: Failed transactions
 - rejected: Blocked by guard rails or the owner
-- expired: Expired or cancelled transactions
+- expired: Expired or cancelled transactions (cancelled is an alias)
+- reversed: Reversed transactions
 - pending: Alias for actionable`,
 	Example: `  botwallet pay list                        # Actionable transactions
   botwallet pay list --status all           # All history
   botwallet pay list --status completed     # Completed only
   botwallet pay list --id <transaction_id>  # Specific transaction`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
 		status, ok := payStatusFilter(payListStatus)
 		if !ok {
-			output.ValidationError("Unknown status: "+payListStatus,
-				"Use one of: actionable, all, pre_approved, awaiting_approval, approved, completed, failed, rejected, expired")
+			exitValidationError("Unknown status: "+payListStatus,
+				"Use one of: actionable, all, pre_approved, awaiting_approval, approved, completed, failed, rejected, expired, cancelled, reversed")
 			return
 		}
-
-		client := getClient()
 
 		result, err := client.ListPayments(payListID, status, payListLimit, payListOffset)
 		if err != nil {
@@ -343,7 +278,7 @@ Use --status to filter:
 }
 
 func init() {
-	payListCmd.Flags().StringVar(&payListStatus, "status", "actionable", "Filter: actionable (default), all, pre_approved, awaiting_approval, approved, completed, failed, rejected, expired")
+	payListCmd.Flags().StringVar(&payListStatus, "status", "actionable", "Filter: actionable (default), all, pre_approved, awaiting_approval, approved, completed, failed, rejected, expired, cancelled, reversed")
 	payListCmd.Flags().StringVar(&payListID, "id", "", "Get specific transaction by ID")
 	payListCmd.Flags().IntVar(&payListLimit, "limit", 20, "Maximum number of results")
 	payListCmd.Flags().IntVar(&payListOffset, "offset", 0, "Offset for pagination")
@@ -383,38 +318,17 @@ Completed, failed, or expired transactions cannot be cancelled.`,
   botwallet pay list`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
-		transactionId := args[0]
-		client := getClient()
+		transactionID := args[0]
 
-		result, err := client.CancelPayment(transactionId)
+		result, err := client.CancelPayment(transactionID)
 		if err != nil {
 			handleAPIError(err)
 			return
 		}
 
-		if !output.IsHumanOutput() {
-			output.JSON(result)
-			return
-		}
-
-		output.SuccessMsg("Payment cancelled!")
-		if id, ok := result["transaction_id"].(string); ok {
-			output.KeyValue("Transaction ID", id)
-		}
-		if prev, ok := result["previous_status"].(string); ok {
-			output.KeyValue("Was", prev)
-		}
-		amount, _ := result["amount_usdc"].(float64)
-		if amount == 0 {
-			amount, _ = result["amount"].(float64)
-		}
-		if amount > 0 {
-			output.KeyValueMoney("Amount", amount)
-		}
+		output.FormatPaymentCancelled(result)
 	},
 }
 

@@ -6,7 +6,7 @@ Thank you for your interest in contributing to the Botwallet CLI! This guide wil
 
 ### Prerequisites
 
-- Go 1.21 or later
+- Go 1.24 or later
 - Make (optional, for convenience commands)
 
 ### Building
@@ -59,13 +59,24 @@ Use conventional commit style:
 ## Architecture
 
 ```
-cmd/           Cobra command definitions (one file per command group)
-api/           HTTP client for the Botwallet API
-config/        Multi-wallet configuration and key storage
-output/        JSON and human-readable output formatting
-solana/        Solana keypair handling and FROST threshold signing
-x402/          x402 paid API discovery and client
+cmd/             Cobra commands, one file per command group (wallet_*.go for
+                 the wallet group). Shared: session.go (the wallet a command
+                 acts as and its API client), errors.go (error codes, advice,
+                 exit), and the Key 1 signing flow of the confirm commands
+                 (frost_sign.go, signing_intent.go, signing_errors.go)
+api/             HTTP client for the Botwallet API
+config/          Multi-wallet configuration and key storage
+output/          JSON and human-readable output (one file per command group)
+solana/          USDC mints, cluster names and Solana address checks
+solana/frost/    FROST 2-of-2 threshold signing and key share encoding
+solana/txcheck/  The check of every transaction before Key 1 signs it
+x402/            x402 client: probing and paying APIs, Bazaar discovery
 ```
+
+Commands fetch and validate; `output` renders both modes. Output changes
+show up in the golden tests: after an intended change, rewrite them with
+`go test ./output -run TestGolden -update` and
+`go test ./cmd -run TestHumanOutputGolden -update`, then review the diff.
 
 ## Reporting Issues
 

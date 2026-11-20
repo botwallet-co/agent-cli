@@ -6,67 +6,6 @@ import (
 	"testing"
 )
 
-// replyTo answers action with the given reply and every other call like
-// server does.
-func replyTo(server *signingAPI, action string, status int, body interface{}) func(string, map[string]interface{}) (int, interface{}) {
-	return func(a string, req map[string]interface{}) (int, interface{}) {
-		if a == action {
-			return status, body
-		}
-		return server.handle(a, req)
-	}
-}
-
-// apiFailWithFix is apiFail with the server's how_to_fix.
-func apiFailWithFix(status int, code, message, howToFix string) (int, interface{}) {
-	return status, map[string]interface{}{
-		"success": false,
-		"error":   map[string]interface{}{"code": code, "message": message, "how_to_fix": howToFix},
-	}
-}
-
-// newSigningServer sets up a wallet and a server that would sign its
-// 10 USDC payment.
-func newSigningServer(t *testing.T) (string, *signingAPI) {
-	t.Helper()
-	home := t.TempDir()
-	w := addTestWallet(t, home, "main")
-	message, confirm := serverMessage(w, payeeAddress)
-	return home, &signingAPI{t: t, groupKey: w.groupKey, agentPart: w.agentPart, message: message, confirm: confirm}
-}
-
-// checkError runs args and checks the error code and that how_to_fix
-// contains each of wantFix.
-func checkError(t *testing.T, home string, api *fakeAPI, args []string, wantCode string, wantFix ...string) map[string]interface{} {
-	t.Helper()
-	run := runCLI(t, home, api.URL, nil, args...)
-	if run.exitCode == 0 {
-		t.Fatalf("exit 0, want an error\n%s", run.stdout)
-	}
-	out := run.json(t)
-	if out["error"] != wantCode {
-		t.Fatalf("error = %v, want %s\n%s", out["error"], wantCode, run.stdout)
-	}
-	fix, _ := out["how_to_fix"].(string)
-	for _, w := range wantFix {
-		if !strings.Contains(fix, w) {
-			t.Errorf("how_to_fix = %q, want it to contain %q", fix, w)
-		}
-	}
-	return out
-}
-
-// submittingCommands are the confirms whose server submits the
-// transaction, and the command that shows its status.
-var submittingCommands = []struct {
-	name  string
-	args  []string
-	check string
-}{
-	{"pay", []string{"pay", "confirm", "tx-1"}, "botwallet pay list --id tx-1"},
-	{"withdraw", []string{"withdraw", "confirm", "wd-1"}, "botwallet withdraw get wd-1"},
-}
-
 func TestSignCompleteErrorCodesArePassedThrough(t *testing.T) {
 	for _, c := range submittingCommands {
 		t.Run(c.name, func(t *testing.T) {
@@ -162,12 +101,11 @@ func sentUnconfirmedReply(id, check string) (int, interface{}) {
 }
 
 func TestSentButUnconfirmedIsPendingNotAnError(t *testing.T) {
-	confirms := map[string]string{"pay": "confirm_payment", "withdraw": "confirm_withdrawal"}
 	for _, c := range submittingCommands {
 		id := c.args[len(c.args)-1]
 		// From frost_sign_complete; from frost_sign_init and the confirm call
 		// when it was sent earlier
-		for _, action := range []string{"frost_sign_complete", "frost_sign_init", confirms[c.name]} {
+		for _, action := range []string{"frost_sign_complete", "frost_sign_init", c.confirm} {
 			t.Run(c.name+"/"+action, func(t *testing.T) {
 				home, server := newSigningServer(t)
 				status, body := sentUnconfirmedReply(id, c.check)
@@ -228,12 +166,11 @@ func TestSentButUnconfirmedHumanOutput(t *testing.T) {
 }
 
 func TestConfirmInvalidStatusSaysHowToCheck(t *testing.T) {
-	confirms := map[string]string{"pay": "confirm_payment", "withdraw": "confirm_withdrawal"}
 	for _, c := range submittingCommands {
 		t.Run(c.name, func(t *testing.T) {
 			home, server := newSigningServer(t)
 			status, body := apiFail(http.StatusBadRequest, "INVALID_STATUS", "Cannot confirm transaction with status: pending")
-			api := newFakeAPI(t, replyTo(server, confirms[c.name], status, body))
+			api := newFakeAPI(t, replyTo(server, c.confirm, status, body))
 
 			checkError(t, home, api, c.args, "INVALID_STATUS", c.check, "do not create")
 			if api.received("frost_sign_init") {
@@ -283,14 +220,13 @@ func TestFrozenWalletSaysWhichConfirmFinishesItLater(t *testing.T) {
 }
 
 func TestOwnerSigningTransferIsLeftToTheOwner(t *testing.T) {
-	confirms := map[string]string{"pay": "confirm_payment", "withdraw": "confirm_withdrawal"}
 	for _, c := range submittingCommands {
 		t.Run(c.name, func(t *testing.T) {
 			home, server := newSigningServer(t)
 			status, body := apiFailWithFix(http.StatusBadRequest, "INVALID_STATUS",
 				"This transfer was started by the wallet owner on the signing page, and only the owner can finish it there",
 				"Leave it to the owner. Check it with: "+c.check)
-			api := newFakeAPI(t, replyTo(server, confirms[c.name], status, body))
+			api := newFakeAPI(t, replyTo(server, c.confirm, status, body))
 
 			out := checkError(t, home, api, c.args, "INVALID_STATUS", "Leave it to the owner", c.check)
 			if fix, _ := out["how_to_fix"].(string); strings.Contains(fix, "do not create") {

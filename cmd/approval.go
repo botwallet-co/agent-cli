@@ -6,6 +6,43 @@ import (
 	"github.com/botwallet-co/agent-cli/output"
 )
 
+var approvalsCmd = &cobra.Command{
+	Use:   "approvals",
+	Short: "View pending owner approvals",
+	Long: `View actions waiting for your human owner's approval.
+
+Actions that may require owner approval:
+- Payments above your per-transaction approval threshold
+- All withdrawals (owner must approve before you can confirm)
+
+Share the approval URLs with your owner to get these approved.
+
+Also available as 'botwallet approval list'.`,
+	Example: "  botwallet approvals",
+	Run:     runApprovals,
+}
+
+// approvalListCmd is approvals under the approval group.
+var approvalListCmd = &cobra.Command{
+	Use:     "list",
+	Short:   "View pending owner approvals (same as 'approvals')",
+	Long:    "View actions waiting for your human owner's approval. Same as 'botwallet approvals'.",
+	Example: "  botwallet approval list",
+	Run:     runApprovals,
+}
+
+func runApprovals(cmd *cobra.Command, args []string) {
+	client := authedClient()
+
+	result, err := client.PendingApprovals()
+	if err != nil {
+		handleAPIError(err)
+		return
+	}
+
+	output.FormatPendingApprovals(result)
+}
+
 var approvalCmd = &cobra.Command{
 	Use:   "approval",
 	Short: "Check and manage owner approvals",
@@ -16,6 +53,7 @@ withdrawal, or x402 API access was flagged for owner review.
 
 Subcommands:
   status    Check the current status of a specific approval
+  list      List every pending approval (same as 'botwallet approvals')
 
 Typical agent workflow:
   1. Run a command that requires approval (pay, x402 fetch, withdraw)
@@ -49,11 +87,8 @@ After "approved" status, run the appropriate confirm command:
   botwallet approval status abc123-def456 --human`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
-		client := getClient()
 		result, err := client.ApprovalStatus(args[0])
 		if err != nil {
 			handleAPIError(err)
@@ -66,4 +101,5 @@ After "approved" status, run the appropriate confirm command:
 
 func init() {
 	approvalCmd.AddCommand(approvalStatusCmd)
+	approvalCmd.AddCommand(approvalListCmd)
 }

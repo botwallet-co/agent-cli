@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -27,9 +28,10 @@ var eventsCmd = &cobra.Command{
 Events are generated automatically when things happen:
 - Human approves or rejects a pending payment/withdrawal
 - Funds are deposited to your wallet
-- A payment you made completes on-chain
+- A payment or withdrawal you made completes on-chain
 - Fund request is funded or dismissed
-- Guard rails are updated by your owner
+- Another bot sends you a paylink to pay
+'botwallet docs' lists every event type.
 
 By default, shows only unread events (max 10). Use --all to include read events.
 
@@ -47,16 +49,12 @@ including any that arrived after you last listed them.`,
   botwallet events --type deposit_received,payment_completed`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if eventsIDs != "" && !eventsMarkRead {
-			output.ValidationError("--ids is used with --mark-read",
+			exitValidationError("--ids is used with --mark-read",
 				"Example: botwallet events --mark-read --ids <id>,<id>")
 			return
 		}
 
-		if !requireAPIKey() {
-			return
-		}
-
-		client := getClient()
+		client := authedClient()
 		types := splitList(eventsType)
 
 		if eventsMarkRead {
@@ -82,10 +80,10 @@ func markEventsRead(cmd *cobra.Command, client *api.Client, types []string) {
 	ids := splitList(eventsIDs)
 	switch {
 	case cmd.Flags().Changed("ids") && len(ids) == 0:
-		output.ValidationError("--ids is empty", "Pass the event ids to mark, e.g. --ids <id>,<id>")
+		exitValidationError("--ids is empty", "Pass the event ids to mark, e.g. --ids <id>,<id>")
 		return
 	case len(ids) > 0 && filtered:
-		output.ValidationError("Use either --ids or --type/--since/--limit with --mark-read",
+		exitValidationError("Use either --ids or --type/--since/--limit with --mark-read",
 			"To mark the events you handled, pass only --mark-read --ids <id>,<id>")
 		return
 	case len(ids) == 0 && filtered:
@@ -110,9 +108,10 @@ func markEventsRead(cmd *cobra.Command, client *api.Client, types []string) {
 	output.FormatMarkRead(result)
 }
 
-// listedEventIDs returns the ids of the events in an events response. The
-// server drops type names it does not know and then lists every type, so
-// with types given only events of those types count.
+// listedEventIDs returns the ids of the events in an events response. Older
+// servers dropped type names they did not know and then listed every type
+// (current ones answer VALIDATION_ERROR), so with types given only events of
+// those types count.
 func listedEventIDs(listed map[string]interface{}, types []string) []string {
 	var ids []string
 	events, _ := listed["events"].([]interface{})
@@ -123,12 +122,36 @@ func listedEventIDs(listed map[string]interface{}, types []string) []string {
 		}
 		id, _ := evt["id"].(string)
 		eventType, _ := evt["type"].(string)
-		if id == "" || (len(types) > 0 && !containsString(types, eventType)) {
+		if id == "" || (len(types) > 0 && !slices.Contains(types, eventType)) {
 			continue
 		}
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+// eventTypes are the event types the server writes, and what each means:
+// VALID_EVENT_TYPES in supabase/functions/bot/handlers/events.ts, less the
+// two it accepts but never writes (guardrails_updated, wallet_claimed).
+// 'botwallet docs' lists them.
+var eventTypes = []struct{ name, meaning string }{
+	{"approval_required", "an action is waiting for your owner's approval"},
+	{"approval_expiring", "an approval request is about to expire"},
+	{"approval_resolved", "your owner approved or rejected a payment, withdrawal or x402 payment"},
+	{"deposit_received", "funds arrived in your wallet"},
+	{"payment_completed", "a payment you made completed on-chain"},
+	{"withdrawal_completed", "a withdrawal you made completed on-chain"},
+	{"x402_payment_completed", "an x402 API payment settled"},
+	{"x402_payment_failed", "an x402 API payment failed"},
+	{"fund_requested", "you requested funds (confirmation)"},
+	{"fund_request_funded", "your owner funded your request"},
+	{"fund_request_dismissed", "your owner dismissed your request"},
+	{"paylink_created", "you created a paylink"},
+	{"paylink_received", "another bot sent you a paylink to pay"},
+	{"low_balance", "your balance fell below your owner's alert threshold"},
+	{"wallet_pledged", "the wallet was pledged to an owner"},
+	{"wallet_abandoned", "your owner released the wallet"},
+	{"keys_exported", "the wallet's backup keys were exported from the dashboard"},
 }
 
 // splitList splits a comma-separated flag value, dropping empty items.
@@ -140,15 +163,6 @@ func splitList(s string) []string {
 		}
 	}
 	return items
-}
-
-func containsString(list []string, s string) bool {
-	for _, item := range list {
-		if item == s {
-			return true
-		}
-	}
-	return false
 }
 
 func init() {

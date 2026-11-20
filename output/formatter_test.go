@@ -2,32 +2,8 @@ package output
 
 import (
 	"encoding/json"
-	"io"
-	"os"
 	"testing"
 )
-
-// captureStdout runs f in JSON mode and returns what it wrote to stdout.
-func captureStdout(t *testing.T, f func()) string {
-	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan string)
-	go func() {
-		b, _ := io.ReadAll(r)
-		done <- string(b)
-	}()
-
-	oldStdout, oldHuman := os.Stdout, humanOutput
-	os.Stdout, humanOutput = w, false
-	defer func() { os.Stdout, humanOutput = oldStdout, oldHuman }()
-
-	f()
-	w.Close()
-	return <-done
-}
 
 // Agents follow the register output's next_step and on_claimed fields
 // (SKILL.md and 'botwallet docs' name them), so they must be there.

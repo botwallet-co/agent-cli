@@ -3,39 +3,7 @@ package cmd
 import (
 	"strings"
 	"testing"
-
-	solanago "github.com/gagliardetto/solana-go"
-
-	"github.com/botwallet-co/agent-cli/solana"
-	"github.com/botwallet-co/agent-cli/solana/txcheck/txchecktest"
 )
-
-func TestIsValidSolanaAddress(t *testing.T) {
-	wallet := testAddress("wallet")
-	usdcAccount := txchecktest.ATA(wallet, solanago.MustPublicKeyFromBase58(solana.USDCMintMainnet))
-	if solanago.IsOnCurve(usdcAccount[:]) {
-		t.Fatal("test setup: the associated token account should be off the curve")
-	}
-
-	cases := []struct {
-		addr string
-		want bool
-	}{
-		{wallet.String(), true},
-		{usdcAccount.String(), true}, // off-curve addresses (vaults, escrows) stay allowed
-		{"11111111111111111111111111111111", true},
-		{strings.Repeat("z", 44), false}, // base58, but 33 bytes
-		{strings.Repeat("2", 32), false}, // base58, but fewer than 32 bytes
-		{wallet.String()[:31], false},
-		{wallet.String()[:30] + "0OIl", false},
-		{"", false},
-	}
-	for _, c := range cases {
-		if got := isValidSolanaAddress(c.addr); got != c.want {
-			t.Errorf("isValidSolanaAddress(%q) = %v, want %v", c.addr, got, c.want)
-		}
-	}
-}
 
 func TestBadAddressesStopBeforeTheServer(t *testing.T) {
 	home := t.TempDir()

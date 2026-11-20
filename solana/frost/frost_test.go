@@ -347,28 +347,6 @@ func splitWords(s string) []string {
 	return words
 }
 
-// TestS1NeverInWireTypes ensures that none of the "wire" types
-// (DKG/Sign data structures sent over HTTP) contain scalar fields.
-// This is a compile-time guarantee via the type system, but we
-// document it explicitly here for auditors.
-func TestS1NeverInWireTypes(t *testing.T) {
-	// DKGRound1Result: only SessionID (string) and ServerPublicShare ([]byte = point)
-	_ = DKGRound1Result{SessionID: "test", ServerPublicShare: make([]byte, 32)}
-
-	// DKGRound2Data: only SessionID, BotPublicShare (point), GroupPublicKey (point)
-	_ = DKGRound2Data{SessionID: "test", BotPublicShare: make([]byte, 32), GroupPublicKey: make([]byte, 32)}
-
-	// SignRound1Data: only TransactionID and NonceCommitment (point)
-	_ = SignRound1Data{TransactionID: "test", NonceCommitment: make([]byte, 32)}
-
-	// SignRound2Data: only SessionID and PartialSig (scalar, but this is z1=r1+k*s1, not s1 itself)
-	// z1 cannot be used to extract s1 without knowing r1 (ephemeral nonce)
-	_ = SignRound2Data{SessionID: "test", PartialSig: make([]byte, 32)}
-
-	// NONE of these types contain *edwards25519.Scalar (key share secrets)
-	t.Log("✅ Wire types contain no secret key share material")
-}
-
 // BenchmarkPartialSign measures signing performance.
 func BenchmarkPartialSign(b *testing.B) {
 	botShare, _ := GenerateKeyShare()

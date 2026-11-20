@@ -1,0 +1,2132 @@
+=== messages (human)
+--- stdout
+✅ done 1
+⚠️  careful
+ℹ️  note
+
+💡 try this
+--- stderr
+❌ bad input
+=== box (human)
+--- stdout
+
+┌───────────────────────┐
+│    Confirm Payment    │
+├───────────────────────┤
+│  To:     @shop        │
+│  Amount: $10.00 USDC  │
+│  Fee:    $0.10 USDC   │
+│  Total:  $10.10 USDC  │
+└───────────────────────┘
+
+┌────────┐
+│  x     │
+└────────┘
+
+┌────────────────────────────────────────────────────────────┐
+│  A title that is much too long to fit inside the box w...  │
+├────────────────────────────────────────────────────────────┤
+│  line                                                      │
+└────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────┐
+│                          Wrapped                           │
+├────────────────────────────────────────────────────────────┤
+│  abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdef  │
+│  ghijabcdefghij                                            │
+└────────────────────────────────────────────────────────────┘
+--- stderr
+=== critical_box (human)
+--- stdout
+
+╔═════════════════════════════════════════════════╗
+║    ⚠️  WALLET NOT CLAIMED - ACTION REQUIRED     ║
+╠═════════════════════════════════════════════════╣
+║  Your wallet is blocked until your human owner  ║
+║  claims it.                                     ║
+╚═════════════════════════════════════════════════╝
+
+╔════════════════════════════════════════════════════════════╗
+║  ⚠️  A title that is much too long to fit inside the b...  ║
+╠════════════════════════════════════════════════════════════╣
+║  line                                                      ║
+╚════════════════════════════════════════════════════════════╝
+
+╔════════════════════════════════════════════════════════════╗
+║                        ⚠️  Wrapped                         ║
+╠════════════════════════════════════════════════════════════╣
+║  abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdef  ║
+║  ghijabcdefghij                                            ║
+╚════════════════════════════════════════════════════════════╝
+--- stderr
+=== box/non_ascii (human)
+--- stdout
+
+╔══════════════════════════════════════════════════╗
+║            ⚠️  SENSITIVE KEY MATERIAL            ║
+╠══════════════════════════════════════════════════╣
+║  This command reveals Key 1 — 12 secret words    ║
+║  that are half of the wallet's full backup key.  ║
+╚══════════════════════════════════════════════════╝
+
+┌────────────────────────────────────────────────────────────┐
+│                      Café ☕ — résumé                       │
+├────────────────────────────────────────────────────────────┤
+│  éééééééééééééééééééééééééééééééééééééééééééééééééééééééé  │
+│  éééé                                                      │
+└────────────────────────────────────────────────────────────┘
+--- stderr
+=== confirm_summary (human)
+--- stdout
+
+┌──────────────────────────────────────────────────┐
+│                 Confirm Payment                  │
+├──────────────────────────────────────────────────┤
+│  To:     @shop                                   │
+│  Amount: $10.00 USDC                             │
+│  Fee:    $0.25 USDC (incl. $0.15 account setup)  │
+│  Total:  $10.25 USDC                             │
+│  Network: mainnet-beta                           │
+└──────────────────────────────────────────────────┘
+
+
+┌────────────────────────┐
+│    Confirm Payment     │
+├────────────────────────┤
+│  To:     @7xKXtg2C...  │
+│  Amount: $1.00 USDC    │
+│  Fee:    $0.00 USDC    │
+│  Total:  $1.00 USDC    │
+└────────────────────────┘
+
+
+┌───────────────────────────────┐
+│      Confirm Withdrawal       │
+├───────────────────────────────┤
+│  To:     7xKXtg2C...uJosgAsU  │
+│  Amount: $50.00 USDC          │
+│  Fee:    $0.50 USDC           │
+│  Total:  $50.50 USDC          │
+│  Network: mainnet-beta        │
+└───────────────────────────────┘
+
+
+┌────────────────────────────────────────────────────────────┐
+│                        x402 Payment                        │
+├────────────────────────────────────────────────────────────┤
+│  API:    https://api.example.com/v1/forecast?city=amsterd  │
+│  am&days=7&units=metric                                    │
+│  To:     7xKXtg2C...uJosgAsU                               │
+│  Amount: $0.01 USDC                                        │
+│  Fee:    $0.01 USDC                                        │
+│  Total:  $0.02 USDC                                        │
+└────────────────────────────────────────────────────────────┘
+
+--- stderr
+=== print_error (json)
+--- stdout
+{
+  "details": {
+    "balance_usdc": 3.25,
+    "funding_url": "https://botwallet.co/fund/orion-1234",
+    "required_usdc": 50.5,
+    "shortfall": 47.25
+  },
+  "error": "INSUFFICIENT_FUNDS",
+  "how_to_fix": "Add funds first",
+  "message": "Not enough balance"
+}
+{
+  "error": "VALIDATION_ERROR",
+  "how_to_fix": "",
+  "message": "--name is required"
+}
+--- stderr
+=== print_error (human)
+--- stdout
+
+   → Add funds first
+
+  Current balance: $3.25
+  Required: $50.50
+  Shortfall: $47.25
+  Add funds at: https://botwallet.co/fund/orion-1234
+--- stderr
+❌ Not enough balance
+❌ --name is required
+=== api_text_with_percent (human)
+--- stdout
+ℹ️  Fees are 1% of each payment (%s and %d are not verbs here).
+
+
+── Hard Limits ───────────────────────────────────────
+  Max per transaction: No limit
+  Spending ceiling: No limit
+
+── Auto-Approve ──────────────────────────────────────
+  All transactions require approval
+
+── Budget ────────────────────────────────────────────
+  No auto-approve budget configured — all transactions require owner approval.
+
+── Withdrawals ───────────────────────────────────────
+  Status: Disabled
+
+── Paylinks ──────────────────────────────────────────
+  Status: Disabled
+
+── Deposit Information ───────────────────────────────
+  Deposit Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+  Funding URL: 
+  Current Balance: $0.00
+
+ℹ️  Send at least 100% of the amount.
+
+💡 Share the funding URL with your human owner for easy deposits.
+--- stderr
+=== layout (human)
+--- stdout
+
+── A section title that is longer than fifty characters in all ──
+
+── Payments ──────────────────────────────────────────
+  Key: value
+  Missing: <nil>
+  Highlighted: value
+  Money: $12.35
+  URL: https://example.com
+  A              Longer header  
+  ─────────────  ─────────────  
+  1              x              
+  a longer cell  y              
+--- stderr
+=== withdrawal_fee_lines (human)
+--- stdout
+  Fees: $0.50
+  Platform fee: $0.50
+  Account setup (one-time, new address): $0.25
+  Total fees: $0.75
+  Platform fee: $0.50
+--- stderr
+=== register/second_wallet (json)
+--- stdout
+{
+  "claim_code": "ABC123",
+  "claim_expires_at": "2026-10-03T11:30:00Z",
+  "claim_url": "https://app.botwallet.co/claim/abc",
+  "next_step": {
+    "action": "Share the claim_url and claim_code with your human now and tell them the code expires in 48 hours. Explain in plain words: this is a spending account they will own; after claiming they can set how much you may spend without asking, add money, and withdraw any time. Don't make payments until they've claimed it and set an allowance.",
+    "claim_code": "ABC123",
+    "claim_url": "https://app.botwallet.co/claim/abc"
+  },
+  "note": "This wallet is now your default. Previous default was 'old-bot'. Use 'botwallet wallet list' to see all wallets.",
+  "on_claimed": "When your human confirms they've claimed the wallet, thank them. You can offer to show what you can do, for example by creating a small sample payment link with 'botwallet paylink create' that they can try, but never pressure them to pay you.",
+  "pledged_to": "human@example.com",
+  "status": "unclaimed",
+  "success": true,
+  "wallet_id": "w-1",
+  "wallet_name": "orion-1234"
+}
+--- stderr
+=== register/second_wallet (human)
+--- stdout
+✅ Wallet created successfully!
+
+── Wallet Details ────────────────────────────────────
+  Username: @orion-1234
+  Wallet ID: w-1
+  Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+  Security: 2-of-2 threshold signing (FROST)
+
+── Next: Claim Your Wallet ───────────────────────────
+  Your wallet needs to be claimed before most features work.
+
+  Claim Code: ABC123
+  Claim URL: https://app.botwallet.co/claim/abc
+  Code expires: 2026-10-03 11:30 UTC (in 47h)
+
+  Share the claim link and code with your human. In plain words: this
+  is a spending account they will own. After claiming, they can set how
+  much you may spend without asking, add money, and withdraw any time.
+  Don't make payments until they've claimed it and set an allowance.
+
+ℹ️  After they claim it, thank them. You can offer to show what you can do,
+  e.g. a small sample payment link ('botwallet paylink create') they can
+  try, but never pressure them to pay you.
+--- stderr
+=== register/first_wallet (json)
+--- stdout
+{
+  "claim_code": "ABC123",
+  "claim_url": "https://app.botwallet.co/claim/abc",
+  "next_step": {
+    "action": "Share the claim_url and claim_code with your human now and tell them the code expires in 48 hours. Explain in plain words: this is a spending account they will own; after claiming they can set how much you may spend without asking, add money, and withdraw any time. Don't make payments until they've claimed it and set an allowance.",
+    "claim_code": "ABC123",
+    "claim_url": "https://app.botwallet.co/claim/abc"
+  },
+  "on_claimed": "When your human confirms they've claimed the wallet, thank them. You can offer to show what you can do, for example by creating a small sample payment link with 'botwallet paylink create' that they can try, but never pressure them to pay you.",
+  "pledged_to": null,
+  "status": "unclaimed",
+  "success": true,
+  "wallet_id": "w-1",
+  "wallet_name": "orion-1234"
+}
+--- stderr
+=== register/first_wallet (human)
+--- stdout
+✅ Wallet created successfully!
+
+── Wallet Details ────────────────────────────────────
+  Username: @orion-1234
+  Wallet ID: w-1
+  Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+  Security: 2-of-2 threshold signing (FROST)
+
+── Next: Claim Your Wallet ───────────────────────────
+  Your wallet needs to be claimed before most features work.
+
+  Claim Code: ABC123
+  Claim URL: https://app.botwallet.co/claim/abc
+  Code expires: 48 hours after registration
+
+  Share the claim link and code with your human. In plain words: this
+  is a spending account they will own. After claiming, they can set how
+  much you may spend without asking, add money, and withdraw any time.
+  Don't make payments until they've claimed it and set an allowance.
+
+ℹ️  After they claim it, thank them. You can offer to show what you can do,
+  e.g. a small sample payment link ('botwallet paylink create') they can
+  try, but never pressure them to pay you.
+--- stderr
+=== balance/full (json)
+--- stdout
+{
+  "balance": 42.5,
+  "balance_usdc": 42.5,
+  "budget": 25,
+  "budget_period": "weekly",
+  "external_activity_detected": {
+    "adjustment_amount": 5,
+    "adjustment_type": "external_deposit"
+  },
+  "funding_url": "https://botwallet.co/fund/orion-1234",
+  "low_balance": true,
+  "remaining_budget": 15,
+  "spent_this_period": 10
+}
+--- stderr
+=== balance/full (human)
+--- stdout
+
+── Balance ───────────────────────────────────────────
+  Available: $42.50
+
+── Spending (weekly) ─────────────────────────────────
+  Budget: $25.00 / weekly
+  Spent: $10.00
+  Remaining: $15.00
+
+✅ External deposit detected: +$5.00
+
+⚠️  Balance is low!
+  Add funds at: https://botwallet.co/fund/orion-1234
+
+💡 Use 'botwallet pay @recipient <amount>' to send money.
+--- stderr
+=== balance/minimal (json)
+--- stdout
+{
+  "balance": 3,
+  "budget": null,
+  "budget_period": "daily",
+  "external_activity_detected": {
+    "adjustment_amount": -2,
+    "adjustment_type": "external_withdrawal"
+  },
+  "low_balance": false
+}
+--- stderr
+=== balance/minimal (human)
+--- stdout
+
+── Balance ───────────────────────────────────────────
+  Available: $3.00
+
+⚠️  External activity detected: $-2.00 (external_withdrawal)
+
+💡 Use 'botwallet pay @recipient <amount>' to send money.
+--- stderr
+=== info/unclaimed (json)
+--- stdout
+{
+  "action_required": {
+    "claim_code": "ABC123",
+    "claim_url": "https://app.botwallet.co/claim/abc",
+    "expires_at": "2026-10-02T12:00:00Z",
+    "reason": "Wallet is unclaimed - most operations are blocked until a human claims it",
+    "status": "WALLET_BLOCKED",
+    "what_to_tell_human": "Please claim my wallet on Botwallet at https://app.botwallet.co/claim/abc using code ABC123"
+  },
+  "balance": 0,
+  "claim_code": "ABC123",
+  "claim_expires_at": "2026-10-02T12:00:00Z",
+  "claim_url": "https://app.botwallet.co/claim/abc",
+  "deposit_address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "funding_url": "https://botwallet.co/fund/orion-1234",
+  "is_claimed": false,
+  "low_balance": true,
+  "metadata": {
+    "platform": "cursor"
+  },
+  "name": "Orion",
+  "status": "unclaimed",
+  "username": "orion-1234"
+}
+--- stderr
+=== info/unclaimed (human)
+--- stdout
+
+── Wallet Info ───────────────────────────────────────
+  Username: @orion-1234
+  Name: Orion
+  Status: unclaimed
+  Claimed: false
+  Balance: $0.00
+  Deposit Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+  Funding URL: https://botwallet.co/fund/orion-1234
+
+
+╔══════════════════════════════════════════════════════╗
+║       ⚠️  WALLET NOT CLAIMED - ACTION REQUIRED       ║
+╠══════════════════════════════════════════════════════╣
+║  Your wallet is blocked until your human owner       ║
+║  claims it. Send them the claim URL and code below.  ║
+╚══════════════════════════════════════════════════════╝
+
+  Claim URL:
+    https://app.botwallet.co/claim/abc
+  Claim code:
+    ABC123
+  Expires: 2026-10-02 12:00 UTC (in 24h)
+
+  Tell your human:
+    "Please claim my wallet on Botwallet at https://app.botwallet.co/claim/abc using code ABC123"
+
+── Metadata ──────────────────────────────────────────
+  platform: cursor
+
+⚠️  Balance is low!
+
+💡 Use 'botwallet wallet balance' for detailed spending limits.
+--- stderr
+=== info/claimed (json)
+--- stdout
+{
+  "balance": 12,
+  "deposit_address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "funding_url": "https://botwallet.co/fund/orion-1234",
+  "is_claimed": true,
+  "metadata": {},
+  "name": "Orion",
+  "status": "active",
+  "username": "orion-1234"
+}
+--- stderr
+=== info/claimed (human)
+--- stdout
+
+── Wallet Info ───────────────────────────────────────
+  Username: @orion-1234
+  Name: Orion
+  Status: active
+  Claimed: true
+  Balance: $12.00
+  Deposit Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+  Funding URL: https://botwallet.co/fund/orion-1234
+
+💡 Use 'botwallet wallet balance' for detailed spending limits.
+--- stderr
+=== deposit_address/instructions (json)
+--- stdout
+{
+  "balance": 1.5,
+  "deposit_address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "funding_url": "https://botwallet.co/fund/orion-1234",
+  "instructions": "Send USDC on Solana to this address."
+}
+--- stderr
+=== deposit_address/instructions (human)
+--- stdout
+
+── Deposit Information ───────────────────────────────
+  Deposit Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+  Funding URL: https://botwallet.co/fund/orion-1234
+  Current Balance: $1.50
+
+ℹ️  Send USDC on Solana to this address.
+
+💡 Share the funding URL with your human owner for easy deposits.
+--- stderr
+=== deposit_address/plain (human)
+--- stdout
+
+── Deposit Information ───────────────────────────────
+  Deposit Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+  Funding URL: 
+  Current Balance: $0.00
+
+💡 Share the funding URL with your human owner for easy deposits.
+--- stderr
+=== wallet_list (json)
+--- stdout
+{
+  "count": 3,
+  "wallets": [
+    {
+      "local_name": "legacy",
+      "is_default": false,
+      "seed_file": "seeds/legacy.seed"
+    },
+    {
+      "local_name": "main",
+      "username": "orion-1234",
+      "display_name": "main",
+      "public_key": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "is_default": true,
+      "seed_file": "seeds/main.seed"
+    },
+    {
+      "local_name": "research",
+      "username": "research-1",
+      "display_name": "R&D <budget>",
+      "is_default": false,
+      "seed_file": "seeds/research.seed"
+    }
+  ]
+}
+--- stderr
+=== wallet_list (human)
+--- stdout
+
+── Stored Wallets ────────────────────────────────────
+  legacy                (no username saved)
+→ main                  @orion-1234
+  research (R&D <budget>)  @research-1
+
+
+💡 Use 'botwallet wallet use <name>' to switch default wallet
+--- stderr
+=== wallet_use/switched (json)
+--- stdout
+{
+  "already_default": false,
+  "default": "research",
+  "display_name": "R&D <budget>",
+  "public_key": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "success": true,
+  "username": "research-1"
+}
+--- stderr
+=== wallet_use/switched (human)
+--- stdout
+
+✅ Now using: research (R&D <budget>)
+   Username: @research-1
+
+--- stderr
+=== wallet_use/already_default (json)
+--- stdout
+{
+  "already_default": true,
+  "default": "main",
+  "display_name": "main",
+  "public_key": "",
+  "success": true,
+  "username": ""
+}
+--- stderr
+=== wallet_use/already_default (human)
+--- stdout
+
+✅ Already using: main
+
+--- stderr
+=== backup_started (json)
+--- stdout
+{
+  "action": "backup_initiated",
+  "code": "ab2c",
+  "expires_in": "5 minutes",
+  "expires_in_seconds": 300,
+  "next_step": "botwallet wallet reveal-backup --code ab2c",
+  "warning": "This will reveal Key 1 — 12 secret words that are half of the wallet's full backup key. Only proceed if the wallet OWNER asked for their backup key. Key 1 alone cannot access funds."
+}
+--- stderr
+=== backup_started (human)
+--- stdout
+
+╔══════════════════════════════════════════════════════╗
+║              ⚠️  SENSITIVE KEY MATERIAL              ║
+╠══════════════════════════════════════════════════════╣
+║  This command reveals Key 1 — 12 secret words        ║
+║  that are half of the wallet's full backup key.      ║
+║                                                      ║
+║  Only run this if the wallet OWNER has specifically  ║
+║  asked you to share their backup key.                ║
+║                                                      ║
+║  Key 1 alone cannot access funds, but should be      ║
+║  treated as highly confidential.                     ║
+╚══════════════════════════════════════════════════════╝
+
+  To proceed, run:
+    botwallet wallet reveal-backup --code ab2c
+
+ℹ️  Code expires in 5 minutes.
+--- stderr
+=== key1_revealed (json)
+--- stdout
+{
+  "description": "12 secret words — the first half of the wallet backup key",
+  "instructions": "Share these 12 words with the wallet owner only, and send them privately (never in a shared or public channel). The owner needs Key 1 to withdraw from the Botwallet dashboard and to recover the wallet. Key 2 can be retrieved from the Botwallet dashboard.",
+  "key": "Key 1",
+  "secret_words": "one two three four five six seven eight nine ten eleven twelve",
+  "wallet": "main"
+}
+--- stderr
+=== key1_revealed (human)
+--- stdout
+
+⚠️  Key 1 (12 secret words) for "main":
+
+    one two three four five six seven eight nine ten eleven twelve
+
+ℹ️  Share these 12 words with the wallet owner only, privately (never in a shared or public channel).
+ℹ️  The owner needs Key 1 to withdraw from the Botwallet dashboard and to recover the wallet.
+ℹ️  Key 2 can be retrieved from the Botwallet dashboard.
+
+--- stderr
+=== wallet_exported (json)
+--- stdout
+{
+  "export_id": "3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23",
+  "file": "/home/orion/main.bwlt",
+  "import_cmd": "botwallet wallet import main.bwlt",
+  "note": "Anyone with this file can import the wallet until it stops working. Share it only privately, and delete it once the wallet is imported.",
+  "owner_action": "This file only moves the wallet to another machine; it is not a backup. To back up the wallet, the owner needs Key 1 (share it with 'botwallet wallet backup' when the owner asks for it) and Key 2 (from the Botwallet dashboard).",
+  "success": true,
+  "valid_for": "Up to 5 imports within 24 hours of this export. After that the file stops working.",
+  "wallet_name": "main"
+}
+--- stderr
+=== wallet_exported (human)
+--- stdout
+
+✅ Wallet exported successfully!
+
+  Wallet: main
+  File: /home/orion/main.bwlt
+  Export ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+
+ℹ️  Import on the other machine within 24 hours: botwallet wallet import main.bwlt
+ℹ️  The file works for up to 5 imports within 24 hours, then it stops working.
+⚠️  Anyone with this file can import the wallet until then. Share it only privately, and delete it once the wallet is imported.
+
+ℹ️  This file is not a backup. To back up the wallet, the owner needs Key 1 (shared with 'botwallet wallet backup' when the owner asks for it) and Key 2 (from the Botwallet dashboard).
+--- stderr
+=== wallet_imported/first (json)
+--- stdout
+{
+  "is_default": true,
+  "public_key": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "success": true,
+  "username": "orion-1234",
+  "wallet_name": "main"
+}
+--- stderr
+=== wallet_imported/first (human)
+--- stdout
+
+✅ Wallet imported successfully!
+
+  Wallet: main
+  Username: orion-1234
+  Deposit Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+--- stderr
+=== wallet_imported/second (json)
+--- stdout
+{
+  "is_default": true,
+  "note": "Wallet imported and set as default. Previous default was \"main\".",
+  "previous_default": "main",
+  "public_key": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "success": true,
+  "total_wallets": 2,
+  "username": "orion-1234",
+  "wallet_name": "main-2"
+}
+--- stderr
+=== wallet_imported/second (human)
+--- stdout
+
+✅ Wallet imported successfully!
+
+  Wallet: main-2
+  Username: orion-1234
+  Deposit Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+
+ℹ️  Set as default wallet. Previous default was "main".
+ℹ️  Use 'botwallet wallet list' to see all wallets.
+--- stderr
+=== ping (json)
+--- stdout
+{
+  "timestamp": "2026-10-01T12:00:00Z",
+  "version": "1.2.3"
+}
+--- stderr
+=== ping (human)
+--- stdout
+✅ API is reachable!
+  Version: 1.2.3
+  Timestamp: 2026-10-01T12:00:00Z
+--- stderr
+=== pay_success/full (json)
+--- stdout
+{
+  "amount_usdc": 10,
+  "explorer_url": "https://solscan.io/tx/5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW",
+  "fee_breakdown": {
+    "account_setup_fee_usdc": 0.25,
+    "platform_fee_usdc": 0.1
+  },
+  "fee_usdc": 0.35,
+  "funding_url": "https://botwallet.co/fund/orion-1234",
+  "low_balance": true,
+  "network": "mainnet-beta",
+  "new_balance_usdc": 31.65,
+  "solana_signature": "5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW",
+  "to_address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "to_name": "shop",
+  "transaction_id": "3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23"
+}
+--- stderr
+=== pay_success/full (human)
+--- stdout
+✅ Payment sent!
+
+── Payment Details ───────────────────────────────────
+  To: @shop
+  Address: 7xKXtg2C...uJosgAsU
+  Amount: $10.00
+  Fee: $0.35
+    Platform fee:    $0.10
+    Account setup:   $0.25  (one-time for new recipient)
+  Total: $10.35
+
+  New Balance: $31.65 (estimate)
+  Transaction ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+
+
+── Solana Transaction ────────────────────────────────
+  Signature: 5VERv8NM...diSZkQUW
+  View on Explorer: https://solscan.io/tx/5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW
+  Network: mainnet-beta
+
+⚠️  Balance is getting low!
+  Add funds at: https://botwallet.co/fund/orion-1234
+--- stderr
+=== pay_success/minimal (human)
+--- stdout
+✅ Payment sent!
+
+── Payment Details ───────────────────────────────────
+  To: @shop
+  Amount: $2.00
+  Total: $2.00
+
+--- stderr
+=== pay_initiated/pre_approved (json)
+--- stdout
+{
+  "amount_usdc": 10,
+  "expires_at": "2026-10-03T12:00:00Z",
+  "fee_usdc": 0.1,
+  "ready_to_confirm": true,
+  "status": "pre_approved",
+  "to": "@shop",
+  "to_address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "total_usdc": 10.1,
+  "transaction_id": "3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23"
+}
+--- stderr
+=== pay_initiated/pre_approved (human)
+--- stdout
+✅ Payment initiated - PRE-APPROVED ✓
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Status: PRE-APPROVED ✓
+
+  To: @shop
+  Address: 7xKXtg2C...uJosgAsU
+  Amount: $10.00
+  Fee: $0.10
+  Total: $10.10
+  Expires: in 2d
+
+
+── Next Step ─────────────────────────────────────────
+ℹ️  Ready to execute! Run:
+  botwallet pay confirm 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+--- stderr
+=== pay_initiated/awaiting_approval (json)
+--- stdout
+{
+  "agent_hint": "Send the approval_url to your human owner and tell them that approving does not send the payment by itself: once they approve, you must come back and run confirm_command to complete it. Save approval_id to persistent memory and check 'botwallet approval status a1b2c3d4-0000-4000-8000-000000000001' periodically until it is approved. Approvals expire after 24 hours.",
+  "amount_usdc": 500,
+  "approval_id": "a1b2c3d4-0000-4000-8000-000000000001",
+  "approval_url": "https://app.botwallet.co/approve/a1b2c3d4-0000-4000-8000-000000000001",
+  "expires_at": "2026-10-01T12:30:00Z",
+  "fee_breakdown": {
+    "account_setup_fee_usdc": 0.25,
+    "platform_fee_usdc": 0.1
+  },
+  "fee_usdc": 0.35,
+  "guard_rail": {
+    "name": "Auto-approve limit"
+  },
+  "message": "Above your auto-approve limit.",
+  "ready_to_confirm": false,
+  "status": "awaiting_approval",
+  "to": "shop",
+  "total_usdc": 500.35,
+  "transaction_id": "3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23"
+}
+--- stderr
+=== pay_initiated/awaiting_approval (human)
+--- stdout
+⚠️  Payment initiated - AWAITING APPROVAL
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Status: AWAITING APPROVAL
+
+  To: @shop
+  Amount: $500.00
+  Fee: $0.35
+    Platform fee:    $0.10
+    Account setup:   $0.25  (one-time for new recipient)
+  Total: $500.35
+  Expires: in 30m
+
+
+── Awaiting Human Approval ───────────────────────────
+  Triggered by: Auto-approve limit
+  Approval ID: a1b2c3d4-0000-4000-8000-000000000001
+
+  Above your auto-approve limit.
+
+  Three steps required:
+
+  1. Ask your human to approve at:
+     https://app.botwallet.co/approve/a1b2c3d4-0000-4000-8000-000000000001
+
+  2. Check status with:
+     botwallet approval status a1b2c3d4-0000-4000-8000-000000000001
+
+  3. After approved, run:
+     botwallet pay confirm 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+
+  ❌ Payment does NOT auto-execute after approval!
+
+💡 Save the approval_id to memory. Check periodically until the human approves, then run the confirm command.
+--- stderr
+=== pay_initiated/awaiting_approval_no_id (json)
+--- stdout
+{
+  "agent_hint": "Send the approval_url to your human owner and tell them that approving does not send the payment by itself: once they approve, you must come back and run confirm_command to complete it. Save approval_id to persistent memory and check 'botwallet approval status <approval_id>' periodically until it is approved. Approvals expire after 24 hours.",
+  "amount_usdc": 5,
+  "ready_to_confirm": false,
+  "status": "awaiting_approval",
+  "transaction_id": "3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23"
+}
+--- stderr
+=== pay_initiated/awaiting_approval_no_id (human)
+--- stdout
+⚠️  Payment initiated - AWAITING APPROVAL
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Status: AWAITING APPROVAL
+
+  Amount: $5.00
+
+
+── Awaiting Human Approval ───────────────────────────
+
+  Three steps required:
+
+  1. Ask your human to approve at:
+
+  2. Check status with:
+
+  3. After approved, run:
+     botwallet pay confirm 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+
+  ❌ Payment does NOT auto-execute after approval!
+
+💡 Save the approval_id to memory. Check periodically until the human approves, then run the confirm command.
+--- stderr
+=== pay_initiated/rejected (json)
+--- stdout
+{
+  "amount_usdc": 900,
+  "expires_at": "2026-10-01T12:02:00Z",
+  "guard_rail": {
+    "current_value": "$100.00",
+    "description": "Caps each payment.",
+    "name": "Max per transaction"
+  },
+  "how_to_fix": "Ask your owner to raise the limit.",
+  "message": "Payment exceeds the per-transaction limit.",
+  "ready_to_confirm": false,
+  "status": "rejected",
+  "to": "@shop",
+  "transaction_id": "3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23"
+}
+--- stderr
+=== pay_initiated/rejected (human)
+--- stdout
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Status: REJECTED ✗
+
+  To: @shop
+  Amount: $900.00
+  Expires: expires soon
+
+
+── Blocked by Guard Rail ─────────────────────────────
+  Guard Rail: Max per transaction
+  Current Setting: $100.00
+
+  Caps each payment.
+
+ℹ️  Payment exceeds the per-transaction limit.
+
+   → Ask your owner to raise the limit.
+--- stderr
+❌ Payment BLOCKED by guard rail
+=== pay_initiated/blocked (json)
+--- stdout
+{
+  "expires_at": "not-a-time-value",
+  "ready_to_confirm": false,
+  "status": "blocked",
+  "transaction_id": "3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23"
+}
+--- stderr
+=== pay_initiated/blocked (human)
+--- stdout
+ℹ️  Payment initiated (status: blocked)
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Status: BLOCKED
+
+  Expires: not-a-time
+
+--- stderr
+=== payments_list/rows (json)
+--- stdout
+{
+  "has_more": false,
+  "payments": [
+    {
+      "amount_usdc": 5,
+      "created_at": "2026-10-01T10:00:00Z",
+      "status": "approved",
+      "to": "@merchant",
+      "transaction_id": "3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23"
+    },
+    {
+      "amount": 12.5,
+      "created_at": "2026-09-30",
+      "status": "awaiting_approval",
+      "to": "a-very-long-recipient-name",
+      "transaction_id": "tx-2"
+    },
+    {
+      "amount_usdc": 1,
+      "created_at": "short",
+      "status": "completed",
+      "to": "",
+      "transaction_id": "tx-3"
+    },
+    {
+      "amount_usdc": 0.5,
+      "status": "pre_approved",
+      "to": "x",
+      "transaction_id": "tx-4"
+    },
+    "not a payment"
+  ],
+  "total": 4
+}
+--- stderr
+=== payments_list/rows (human)
+--- stdout
+
+── Payments ──────────────────────────────────────────
+  STATUS           AMOUNT  TO                  CREATED       ID
+  ----------------------------------------------------------------------------------------------
+  APPROVED          $5.00  @merchant           2026-10-01    3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  AWAITING         $12.50  @a-very-long-re...  2026-09-30    tx-2
+  COMPLETED         $1.00                                    tx-3
+  PRE-APPROVED      $0.50  @x                                tx-4
+
+
+💡 To confirm: botwallet pay confirm 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+--- stderr
+=== payments_list/empty (human)
+--- stdout
+ℹ️  No payments found.
+
+💡 Use 'botwallet pay @recipient <amount>' to create a payment.
+--- stderr
+=== payments_list/single_completed (human)
+--- stdout
+✅ Payment completed
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Status: COMPLETED ✓
+
+  To: @shop
+  Address: 7xKXtg2C...uJosgAsU
+  Amount: $10.00
+  Fee: $0.10
+  Total: $10.10
+  Note: API credits
+
+  Created: 2026-09-30T08:00:00Z
+
+
+── Solana Transaction ────────────────────────────────
+  Signature: 5VERv8NM...diSZkQUW
+--- stderr
+=== payments_list/single_states (human)
+--- stdout
+✅ Payment ready to confirm
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: tx-pre_approved
+  Status: PRE-APPROVED ✓
+
+  Amount: $1.00
+
+  Expires: in 8h
+
+
+── Next Step ─────────────────────────────────────────
+ℹ️  Run to execute:
+  botwallet pay confirm tx-pre_approved
+✅ Payment ready to confirm
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: tx-approved
+  Status: APPROVED ✓
+
+  Amount: $1.00
+
+  Expires: in 8h
+
+
+── Next Step ─────────────────────────────────────────
+ℹ️  Run to execute:
+  botwallet pay confirm tx-approved
+⚠️  Payment awaiting approval
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: tx-awaiting_approval
+  Status: AWAITING APPROVAL
+
+  Amount: $1.00
+
+  Expires: in 8h
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: tx-failed
+  Status: FAILED ✗
+
+  Amount: $1.00
+
+  Expires: in 8h
+⚠️  Payment expired
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: tx-expired
+  Status: EXPIRED
+
+  Amount: $1.00
+
+  Expires: in 8h
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: tx-rejected
+  Status: REJECTED ✗
+
+  Amount: $1.00
+
+  Expires: in 8h
+ℹ️  Payment details
+
+── Transaction Details ───────────────────────────────
+  Transaction ID: tx-reversed
+  Status: REVERSED
+
+  Amount: $1.00
+
+  Expires: in 8h
+--- stderr
+❌ Payment failed
+❌ Payment rejected
+=== lookup/found (json)
+--- stdout
+{
+  "found": true,
+  "name": "The Shop",
+  "type": "merchant",
+  "username": "shop"
+}
+--- stderr
+=== lookup/found (human)
+--- stdout
+✅ Found: @shop
+  Name: The Shop
+  Type: merchant
+
+💡 Use 'botwallet pay @shop <amount>' to send money.
+--- stderr
+=== lookup/not_found (human)
+--- stdout
+   Did you mean @somebody?
+
+💡 Tips:
+   • Check the username spelling
+   • Verify the recipient has registered at https://botwallet.co
+   • Usernames are case-sensitive
+--- stderr
+❌ Not found: @nobody
+❌ Not found: @nobody
+=== can_i_afford/yes (json)
+--- stdout
+{
+  "amount_usdc": 10,
+  "balance_after_usdc": 20,
+  "can_pay": true,
+  "fee_breakdown": {
+    "account_setup_fee_usdc": 0.25,
+    "platform_fee_usdc": 0.1
+  },
+  "fee_usdc": 0.35,
+  "to": "shop",
+  "total_usdc": 10.35
+}
+--- stderr
+=== can_i_afford/yes (human)
+--- stdout
+✅ Yes, you can afford this payment!
+
+── Payment Preview ───────────────────────────────────
+  To: shop
+  Amount: $10.00
+  Fee: $0.35
+    Platform fee:    $0.10
+    Account setup:   $0.25  (one-time for new recipient)
+  Total: $10.35
+  Balance After: $20.00
+
+💡 Use 'botwallet pay @shop 10.00' to complete the payment.
+--- stderr
+=== can_i_afford/no (human)
+--- stdout
+
+ℹ️  You need $5.00 more.
+  Add funds at: https://botwallet.co/fund/orion-1234
+--- stderr
+❌ Cannot afford this payment: insufficient_funds
+=== sent_unconfirmed/payment (json)
+--- stdout
+{
+  "check_command": "botwallet pay list --id 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23",
+  "explorer_url": "https://solscan.io/tx/5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW",
+  "message": "This payment was sent to Solana but is not confirmed yet, so it may still go through.",
+  "sent": true,
+  "solana_signature": "5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW",
+  "status": "pending",
+  "transaction_id": "3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23"
+}
+--- stderr
+=== sent_unconfirmed/payment (human)
+--- stdout
+ℹ️  This payment was sent to Solana but is not confirmed yet, so it may still go through.
+
+── Payment Details ───────────────────────────────────
+  Transaction ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Status: SENT, CONFIRMING
+
+── Solana Transaction ────────────────────────────────
+  Signature: 5VERv8NM...diSZkQUW
+  View on Explorer: https://solscan.io/tx/5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW
+
+⚠️  It may still go through. Do not send it again.
+
+💡 Check it in about a minute: botwallet pay list --id 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+--- stderr
+=== sent_unconfirmed/withdrawal (human)
+--- stdout
+ℹ️  Sent, not confirmed yet.
+
+── Withdrawal Details ────────────────────────────────
+  Transaction ID: wd-1
+  Status: SENT, CONFIRMING
+
+⚠️  It may still go through. Do not send it again.
+--- stderr
+=== paylink_items_total (json)
+--- stdout
+--- stderr
+=== paylink_items_total (human)
+--- stdout
+
+✓ 1 item, total $10.00
+
+
+✓ 3 items, total $20.50
+
+--- stderr
+=== create_payment_request/full (json)
+--- stdout
+{
+  "amount_usdc": 25,
+  "description": "Research report",
+  "expires_at": "2026-10-02T12:00:00Z",
+  "payment_url": "https://botwallet.co/pay/AB12CD",
+  "request_id": "pr-1",
+  "send_to_email": "To email as invoice: botwallet paylink send pr-1 --to recipient@example.com",
+  "short_code": "AB12CD"
+}
+--- stderr
+=== create_payment_request/full (human)
+--- stdout
+✅ Payment request created!
+
+┌───────────────────────────────────┐
+│    Share this link to get paid    │
+├───────────────────────────────────┤
+│  https://botwallet.co/pay/AB12CD  │
+└───────────────────────────────────┘
+
+── Request Details ───────────────────────────────────
+  Request ID: pr-1
+  Short Code: AB12CD
+  Amount: $25.00
+  Description: Research report
+  Expires: in 1d
+
+💡 Send as invoice: botwallet paylink send pr-1 --to recipient@example.com
+--- stderr
+=== create_payment_request/legacy_id (json)
+--- stdout
+{
+  "amount": 5,
+  "payment_request_id": "pr-2"
+}
+--- stderr
+=== create_payment_request/legacy_id (human)
+--- stdout
+✅ Payment request created!
+
+── Request Details ───────────────────────────────────
+  Request ID: pr-2
+  Amount: $5.00
+
+💡 Send as invoice: botwallet paylink send pr-2 --to recipient@example.com
+--- stderr
+=== send_paylink_invitation/wallet (json)
+--- stdout
+{
+  "amount_usdc": 25,
+  "payment_url": "https://botwallet.co/pay/AB12CD",
+  "sent_to": "wallet",
+  "short_code": "AB12CD",
+  "to": "@data-bot"
+}
+--- stderr
+=== send_paylink_invitation/wallet (human)
+--- stdout
+✅ Payment request delivered to @data-bot's inbox!
+
+── Details ───────────────────────────────────────────
+  Sent to: @data-bot
+  Amount: $25.00
+  Short Code: AB12CD
+  Payment URL: https://botwallet.co/pay/AB12CD
+
+💡 The bot can pay with: botwallet pay --paylink 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+
+💡 Check status with: botwallet paylink get 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+--- stderr
+=== send_paylink_invitation/email (human)
+--- stdout
+✅ Payment request sent!
+
+── Details ───────────────────────────────────────────
+  Sent to: client@example.com
+  Amount: $25.00
+  Short Code: AB12CD
+
+💡 Check status with: botwallet paylink get 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+--- stderr
+=== transactions/rows (json)
+--- stdout
+{
+  "has_more": true,
+  "total": 7,
+  "transactions": [
+    {
+      "amount": -10,
+      "counterparty": "shop",
+      "id": "11111111-aaaa",
+      "timestamp": "2026-09-30T10:00:00Z",
+      "type": "payment"
+    },
+    {
+      "amount": 50,
+      "counterparty": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "id": "22222222-bbbb",
+      "timestamp": "2026-09-29T10:00:00Z",
+      "type": "deposit"
+    },
+    {
+      "amount_usdc": -20,
+      "counterparty": "External wallet",
+      "id": "33333333-cccc",
+      "timestamp": "2026-09-28",
+      "type": "withdrawal"
+    },
+    {
+      "amount": 1.25,
+      "description": "Initial reconciliation",
+      "id": "44444444",
+      "type": "adjustment"
+    },
+    {
+      "amount": -0.5,
+      "description": "fee correction for september",
+      "id": "5",
+      "type": "adjustment"
+    },
+    {
+      "amount": -0.01,
+      "counterparty": "@already-prefixed-very-long-name",
+      "id": "66666666-ffff",
+      "type": "x402_payment"
+    },
+    "not a transaction"
+  ]
+}
+--- stderr
+=== transactions/rows (human)
+--- stdout
+
+── Transactions (7 total) ────────────────────────────
+  Date        Type          Amount   Details               ID        
+  ──────────  ────────────  ───────  ────────────────────  ────────  
+  2026-09-30  sent          -$10.00  @shop                 11111111  
+  2026-09-29  received      +$50.00  7xKXtg2CW87d97TXJ...  22222222  
+  2026-09-28  withdraw      -$20.00  External wallet       33333333  
+              credit        +$1.25   Initial reconcili...  44444444  
+              debit         -$0.50   fee correction fo...  5         
+              x402_payment  -$0.01   @already-prefixed...  66666666  
+
+💡 Use --limit and --offset for pagination.
+--- stderr
+=== transactions/empty (human)
+--- stdout
+
+── Transactions (0 total) ────────────────────────────
+ℹ️  No transactions yet.
+--- stderr
+=== limits/full (json)
+--- stdout
+{
+  "allow_paylinks": true,
+  "allow_withdrawal_requests": true,
+  "auto_approve_max": 25,
+  "balance": 42.5,
+  "budget": 50,
+  "budget_period": "daily",
+  "firewall_enabled": true,
+  "guard_rails_portal": "https://app.botwallet.co/guard-rails",
+  "hard_cap": 100,
+  "hard_cap_budget": 500,
+  "hard_cap_budget_period": "monthly",
+  "max_paylink_amount": 1000,
+  "max_withdrawal": 200,
+  "message": "You can spend up to $25.00 a day without approval.",
+  "remaining_budget": 40,
+  "spent_this_period": 10
+}
+--- stderr
+=== limits/full (human)
+--- stdout
+ℹ️  You can spend up to $25.00 a day without approval.
+
+
+── Hard Limits ───────────────────────────────────────
+  Max per transaction: $100.00
+  Spending ceiling: $500.00 / monthly
+
+── Auto-Approve ──────────────────────────────────────
+  Up to: $25.00
+  Budget: $50.00 / daily
+
+── Auto-Approve Budget Usage ─────────────────────────
+  Spent this daily period: $10.00
+  Auto-approve remaining: $40.00
+  Wallet balance: $42.50
+
+── Withdrawals ───────────────────────────────────────
+  Status: Allowed (always requires approval)
+  Max withdrawal: $200.00
+
+── Paylinks ──────────────────────────────────────────
+  Status: Enabled
+  Max paylink amount: $1000.00
+
+── Firewall ──────────────────────────────────────────
+  Mode: Whitelist only - transactions limited to trusted recipients
+
+  Manage guard rails: https://app.botwallet.co/guard-rails
+--- stderr
+=== limits/minimal (human)
+--- stdout
+
+── Hard Limits ───────────────────────────────────────
+  Max per transaction: No limit
+  Spending ceiling: $30.00 / weekly
+
+── Auto-Approve ──────────────────────────────────────
+  Up to: $5.00
+  Budget: $10.00 / daily
+
+── Auto-Approve Budget Usage ─────────────────────────
+
+── Withdrawals ───────────────────────────────────────
+  Status: Disabled
+
+── Paylinks ──────────────────────────────────────────
+  Status: Disabled
+
+── Hard Limits ───────────────────────────────────────
+  Max per transaction: No limit
+  Spending ceiling: No limit
+
+── Auto-Approve ──────────────────────────────────────
+  All transactions require approval
+
+── Budget ────────────────────────────────────────────
+  No auto-approve budget configured — all transactions require owner approval.
+
+── Withdrawals ───────────────────────────────────────
+  Status: Disabled
+
+── Paylinks ──────────────────────────────────────────
+  Status: Disabled
+--- stderr
+=== pending_approvals/two (json)
+--- stdout
+{
+  "count": 2,
+  "pending": [
+    {
+      "amount_usdc": 500,
+      "approval_id": "a1b2c3d4-0000-4000-8000-000000000001",
+      "approval_url": "https://app.botwallet.co/approve/a1b2c3d4-0000-4000-8000-000000000001",
+      "created_at": "2026-10-01T09:00:00Z",
+      "expires_at": "2026-10-02T09:00:00Z",
+      "note": "API credits",
+      "recipient": "shop",
+      "triggered_by": "Auto-approve limit",
+      "type": "payment"
+    },
+    {
+      "amount": 20,
+      "approval_id": "ap-2",
+      "created_at": "2026-10",
+      "type": "withdrawal"
+    }
+  ]
+}
+--- stderr
+=== pending_approvals/two (human)
+--- stdout
+
+── Pending Approvals (2) ─────────────────────────────
+
+  ID: a1b2c3d4-0000-4000-8000-000000000001
+  Type: payment
+  Amount: $500.00
+  To: @shop
+  Note: API credits
+  Triggered By: Auto-approve limit
+  Created: 2026-10-01
+  Expires: in 21h
+  Approval URL: https://app.botwallet.co/approve/a1b2c3d4-0000-4000-8000-000000000001
+
+  ID: ap-2
+  Type: withdrawal
+  Amount: $20.00
+
+
+💡 Ask your human owner to approve pending actions in their portal.
+--- stderr
+=== pending_approvals/none (human)
+--- stdout
+
+── Pending Approvals (0) ─────────────────────────────
+✅ No pending approvals!
+--- stderr
+=== events/unread (json)
+--- stdout
+{
+  "events": [
+    {
+      "created_at": "2026-10-01T11:00:00Z",
+      "id": "ev-1",
+      "is_read": false,
+      "message": "Run pay confirm.",
+      "severity": "action_required",
+      "title": "Payment approved",
+      "type": "approval_resolved"
+    },
+    {
+      "created_at": "2026-10-01",
+      "id": "ev-2",
+      "is_read": true,
+      "severity": "info",
+      "title": "Deposit",
+      "type": "deposit_received"
+    },
+    {
+      "created_at": "2026-10-01T08:00:00Z",
+      "severity": "warning",
+      "title": "Limits changed",
+      "type": "guard_rails_updated"
+    }
+  ],
+  "unread_count": 2
+}
+--- stderr
+=== events/unread (human)
+--- stdout
+
+── Events (2 unread) ─────────────────────────────────
+  ● Payment approved  [2026-10-01T11:00]
+    Run pay confirm.
+    type: approval_resolved
+    id:   ev-1
+
+  ○ Deposit  []
+    type: deposit_received
+    id:   ev-2
+
+  ▲ Limits changed  [2026-10-01T08:00]
+    type: guard_rails_updated
+
+
+💡 After acting on events, mark them read: botwallet events --mark-read --ids <id>,<id>
+--- stderr
+=== events/none (human)
+--- stdout
+
+── Events (0 unread) ─────────────────────────────────
+✅ No events. You are up to date!
+
+💡 Events appear when your human approves payments, funds arrive, etc.
+--- stderr
+=== mark_read (human)
+--- stdout
+✅ 3 event(s) marked as read.
+ℹ️  No unread events to mark.
+--- stderr
+=== approval_status/pending (json)
+--- stdout
+{
+  "amount_usdc": 500,
+  "approval_id": "a1b2c3d4-0000-4000-8000-000000000001",
+  "expires_at": "2026-10-02T12:00:00Z",
+  "note": "API credits",
+  "recipient": "shop",
+  "status": "pending",
+  "type": "payment"
+}
+--- stderr
+=== approval_status/pending (human)
+--- stdout
+⚠️  Payment approval is still pending
+
+── Approval Details ──────────────────────────────────
+  ID: a1b2c3d4-0000-4000-8000-000000000001
+  Type: Payment
+  Amount: $500.00
+  To: @shop
+  Note: API credits
+  Expires: in 1d
+
+  Waiting for human owner to approve or reject.
+  Check again later with: botwallet approval status a1b2c3d4-0000-4000-8000-000000000001
+--- stderr
+=== approval_status/states (human)
+--- stdout
+⚠️  API Payment approval is still pending
+
+── Approval Details ──────────────────────────────────
+  ID: ap-x
+  Type: API Payment
+  Amount: $0.01
+  Recipient: 7xKXtg2C...uJosgAsU
+
+  Waiting for human owner to approve or reject.
+  Check again later with: botwallet approval status ap-x
+⚠️  Payment approval is still pending
+
+── Approval Details ──────────────────────────────────
+  ID: ap-p
+  Type: Payment
+  Amount: $1.00
+
+  Waiting for human owner to approve or reject.
+  Check again later with: botwallet approval status ap-p
+✅ Withdrawal approved by owner!
+
+── Approval Details ──────────────────────────────────
+  ID: ap-a
+  Type: Withdrawal
+  Amount: $20.00
+  Recipient: 7xKXtg2C...uJosgAsU
+  Approved at: 2026-10-01T11:59
+
+
+── Next Step ─────────────────────────────────────────
+ℹ️  Run: botwallet withdraw confirm wd-1
+
+── Approval Details ──────────────────────────────────
+  ID: ap-r
+  Type: Payment
+  Amount: $3.00
+  To: @shop
+  Reason: Not needed
+
+  The owner declined this action. It cannot proceed.
+⚠️  Payment approval expired
+
+── Approval Details ──────────────────────────────────
+  ID: ap-e
+  Type: Payment
+  Expired at: 2026-09-30T12:00:00Z
+
+  The approval window has closed. Re-initiate the action if still needed.
+ℹ️  Approval status: executed
+  ID: ap-o
+
+ℹ️  Nothing to do.
+--- stderr
+❌ Payment rejected by owner
+=== withdraw/with_breakdown (json)
+--- stdout
+{
+  "agent_hint": "Send the approval_url to your human owner and tell them that approving does not send the withdrawal by itself: once they approve, you must come back and run confirm_command to complete it. Save approval_id to persistent memory and check 'botwallet approval status a1b2c3d4-0000-4000-8000-000000000001' periodically until it is approved. Approvals expire after 24 hours.",
+  "amount_usdc": 50,
+  "approval_id": "a1b2c3d4-0000-4000-8000-000000000001",
+  "approval_url": "https://app.botwallet.co/approve/a1b2c3d4-0000-4000-8000-000000000001",
+  "fee_breakdown": {
+    "account_setup_fee_usdc": 0.25,
+    "platform_fee_usdc": 0.5
+  },
+  "network_fee_usdc": 0.75,
+  "ready_to_confirm": false,
+  "status": "awaiting_approval",
+  "to_address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "withdrawal_id": "wd-1",
+  "you_receive_usdc": 50
+}
+--- stderr
+=== withdraw/with_breakdown (human)
+--- stdout
+⚠️  Withdrawal requires owner approval
+
+── Withdrawal Request ────────────────────────────────
+  Withdrawal ID: wd-1
+  Approval ID: a1b2c3d4-0000-4000-8000-000000000001
+  Amount: $50.00
+  Platform fee: $0.50
+  Account setup (one-time, new address): $0.25
+  Total fees: $0.75
+  Total deducted: $50.75
+  You'll Receive: $50.00
+  To Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+
+ℹ️  All withdrawals require owner approval.
+  Approval URL: https://app.botwallet.co/approve/a1b2c3d4-0000-4000-8000-000000000001
+
+── Next Steps ────────────────────────────────────────
+
+  Three steps required:
+
+  1. Ask your human to approve at:
+     https://app.botwallet.co/approve/a1b2c3d4-0000-4000-8000-000000000001
+
+  2. Check status with:
+     botwallet approval status a1b2c3d4-0000-4000-8000-000000000001
+
+  3. After approved, run:
+     botwallet withdraw confirm wd-1
+
+  ❌ Withdrawal does NOT auto-execute after approval!
+
+💡 Save the approval_id to memory. Check periodically until the human approves, then run the confirm command.
+--- stderr
+=== withdraw/no_approval_id (json)
+--- stdout
+{
+  "amount": 10,
+  "network_fee": 0.5,
+  "ready_to_confirm": false,
+  "status": "awaiting_approval",
+  "to_address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "withdrawal_id": "wd-2",
+  "you_receive": 10
+}
+--- stderr
+=== withdraw/no_approval_id (human)
+--- stdout
+⚠️  Withdrawal requires owner approval
+
+── Withdrawal Request ────────────────────────────────
+  Withdrawal ID: wd-2
+  Approval ID: 
+  Amount: $10.00
+  Fees: $0.50
+  Total deducted: $10.50
+  You'll Receive: $10.00
+  To Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+
+ℹ️  All withdrawals require owner approval.
+
+── Next Steps ────────────────────────────────────────
+
+  Three steps required:
+
+  1. Ask your human to approve at:
+
+  2. Check status with:
+
+  3. After approved, run:
+     botwallet withdraw confirm wd-2
+
+  ❌ Withdrawal does NOT auto-execute after approval!
+
+💡 Save the approval_id to memory. Check periodically until the human approves, then run the confirm command.
+--- stderr
+=== withdraw_success/full (json)
+--- stdout
+{
+  "amount_usdc": 50,
+  "explorer_url": "https://solscan.io/tx/5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW",
+  "fee_usdc": 0.5,
+  "network": "mainnet-beta",
+  "new_balance_usdc": 12,
+  "solana_signature": "5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW",
+  "to_address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "transaction_id": "wd-1"
+}
+--- stderr
+=== withdraw_success/full (human)
+--- stdout
+✅ Withdrawal submitted to Solana!
+
+── Withdrawal Details ────────────────────────────────
+  Transaction ID: wd-1
+  Amount: $50.00
+  Fees: $0.50
+  To Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+
+
+── Solana Transaction ────────────────────────────────
+  Signature: 5VERv8NM...diSZkQUW
+  View on Explorer: https://solscan.io/tx/5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW
+  Network: mainnet-beta
+
+  New Balance: $12.00 (estimate)
+--- stderr
+=== withdraw_success/minimal (human)
+--- stdout
+✅ Withdrawal submitted to Solana!
+
+── Withdrawal Details ────────────────────────────────
+  Amount: $5.00
+  To Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+--- stderr
+=== x402_fetch/pre_approved (json)
+--- stdout
+{
+  "amount_usdc": 0.01,
+  "balance_after_usdc": 9.98,
+  "expires_at": "2026-10-03T12:00:00Z",
+  "fee_usdc": 0.01,
+  "fetch_id": "f-1",
+  "pay_to": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "ready_to_confirm": true,
+  "status": "pre_approved",
+  "total_usdc": 0.02,
+  "url": "https://api.example.com/data"
+}
+--- stderr
+=== x402_fetch/pre_approved (human)
+--- stdout
+✅ x402 API probed - PRE-APPROVED ✓
+
+── Price Details ─────────────────────────────────────
+  URL: https://api.example.com/data
+  Fetch ID: f-1
+  Status: PRE-APPROVED ✓
+
+  Pay To: 7xKXtg2C...uJosgAsU
+  Price: $0.01
+  Fee: $0.01
+  Total: $0.02
+  Balance After: $9.98
+  Expires: in 2d
+
+
+── Next Step ─────────────────────────────────────────
+ℹ️  Ready to fetch! Run:
+  botwallet x402 fetch confirm f-1
+--- stderr
+=== x402_fetch/awaiting_approval (json)
+--- stdout
+{
+  "agent_hint": "Send the approval_url to your human owner and tell them that approving does not send the API payment by itself: once they approve, you must come back and run confirm_command to complete it. Save approval_id to persistent memory and check 'botwallet approval status a1b2c3d4-0000-4000-8000-000000000001' periodically until it is approved. Approvals expire after 24 hours.",
+  "amount_usdc": 5,
+  "approval_id": "a1b2c3d4-0000-4000-8000-000000000001",
+  "approval_url": "https://app.botwallet.co/approve/a1b2c3d4-0000-4000-8000-000000000001",
+  "fetch_id": "f-2",
+  "guard_rail": {
+    "name": "Auto-approve limit"
+  },
+  "ready_to_confirm": false,
+  "status": "awaiting_approval",
+  "url": "https://api.example.com/data"
+}
+--- stderr
+=== x402_fetch/awaiting_approval (human)
+--- stdout
+⚠️  x402 API probed - AWAITING APPROVAL
+
+── Price Details ─────────────────────────────────────
+  URL: https://api.example.com/data
+  Fetch ID: f-2
+  Status: AWAITING APPROVAL
+
+  Price: $5.00
+
+
+── Awaiting Human Approval ───────────────────────────
+  Triggered by: Auto-approve limit
+  Approval ID: a1b2c3d4-0000-4000-8000-000000000001
+
+  Three steps required:
+
+  1. Ask your human to approve at:
+     https://app.botwallet.co/approve/a1b2c3d4-0000-4000-8000-000000000001
+
+  2. Check status with:
+     botwallet approval status a1b2c3d4-0000-4000-8000-000000000001
+
+  3. After approved, run:
+     botwallet x402 fetch confirm f-2
+
+  ❌ Payment does NOT auto-execute after approval!
+
+💡 Save the approval_id to memory. Check periodically until the human approves, then run the confirm command.
+--- stderr
+=== x402_fetch/rejected (json)
+--- stdout
+{
+  "fetch_id": "f-3",
+  "guard_rail": {
+    "name": "x402 disabled"
+  },
+  "message": "Your owner turned x402 payments off.",
+  "ready_to_confirm": false,
+  "status": "rejected"
+}
+--- stderr
+=== x402_fetch/rejected (human)
+--- stdout
+
+── Price Details ─────────────────────────────────────
+  Fetch ID: f-3
+  Status: REJECTED ✗
+
+
+
+── Blocked by Guard Rail ─────────────────────────────
+  Guard Rail: x402 disabled
+
+ℹ️  Your owner turned x402 payments off.
+--- stderr
+❌ x402 payment BLOCKED by guard rail
+=== x402_fetch/other (human)
+--- stdout
+ℹ️  x402 API probed (status: pending)
+
+── Price Details ─────────────────────────────────────
+  Fetch ID: f-4
+  Status: PENDING
+
+
+--- stderr
+=== x402_paid_error (json)
+--- stdout
+{
+  "error": "API returned 500 after payment",
+  "fetch_id": "f-1",
+  "response_body": "upstream down",
+  "response_status": 500,
+  "success": false,
+  "url": "https://api.example.com/data"
+}
+--- stderr
+=== x402_paid_error (human)
+--- stdout
+upstream down
+--- stderr
+❌ API returned error 500 after payment was sent
+=== x402_paid_error/redirect (human)
+--- stdout
+⚠️  It redirected to https://other.example.com/data. The paid request is not sent on to another address.
+--- stderr
+❌ API returned error 302 after payment was sent
+=== x402_fetch_confirm/text (json)
+--- stdout
+{
+  "amount_paid": 0.02,
+  "content_type": "text/plain",
+  "fetch_id": "f-1",
+  "new_balance": 9.98,
+  "response_status": 200,
+  "response_text": "sunny, 20C",
+  "success": true,
+  "transaction_id": "f-1",
+  "url": "https://api.example.com/data"
+}
+--- stderr
+=== x402_fetch_confirm/text (human)
+--- stdout
+✅ x402 API data retrieved!
+  URL: https://api.example.com/data
+  Paid: $0.02
+
+  New Balance: $9.98 (estimate)
+
+── Response ──────────────────────────────────────────
+sunny, 20C
+--- stderr
+=== x402_fetch_confirm/object (json)
+--- stdout
+{
+  "content_type": "application/json",
+  "response": {
+    "sky": "<clear> & calm",
+    "temp": 20
+  },
+  "success": true,
+  "url": "https://api.example.com/data"
+}
+--- stderr
+=== x402_fetch_confirm/object (human)
+--- stdout
+✅ x402 API data retrieved!
+  URL: https://api.example.com/data
+
+── Response ──────────────────────────────────────────
+{
+  "sky": "<clear> & calm",
+  "temp": 20
+}
+--- stderr
+=== x402_fetch_confirm/other_json (human)
+--- stdout
+✅ x402 API data retrieved!
+  URL: https://api.example.com/list
+
+── Response ──────────────────────────────────────────
+[
+  {
+    "temp": 20
+  }
+]
+✅ x402 API data retrieved!
+  URL: https://api.example.com/n
+
+── Response ──────────────────────────────────────────
+42
+✅ x402 API data retrieved!
+  URL: https://api.example.com/bad
+
+── Response ──────────────────────────────────────────
+{not json
+--- stderr
+=== x402_discover/results (json)
+--- stdout
+{
+  "next_page": "botwallet x402 discover --bazaar --offset 2",
+  "query": "weather",
+  "results": [
+    {
+      "description": "Hourly weather forecasts for any city in the world",
+      "last_updated": "2026-09-01",
+      "metadata": {
+        "description": "Hourly weather forecasts for any city in the world"
+      },
+      "network": "solana",
+      "networks": [
+        "base",
+        "solana"
+      ],
+      "next_step": "botwallet x402 fetch https://weather.example.com/forecast/with/a/rather/long/path/that/goes/on",
+      "price": "10000",
+      "price_usdc": 0.01,
+      "solana_compatible": true,
+      "url": "https://weather.example.com/forecast/with/a/rather/long/path/that/goes/on"
+    },
+    {
+      "description": "https://weth.example.com/data",
+      "last_updated": "2026-09-02",
+      "network": "base",
+      "next_step": "botwallet x402 fetch https://weth.example.com/data",
+      "price": "1000000000000000",
+      "price_usdc": 1000000000,
+      "solana_compatible": false,
+      "url": "https://weth.example.com/data"
+    },
+    {
+      "description": "https://free.example.com/",
+      "last_updated": "",
+      "network": "",
+      "next_step": "botwallet x402 fetch https://free.example.com/",
+      "price": "",
+      "price_usdc": 0,
+      "solana_compatible": false,
+      "url": "https://free.example.com/"
+    }
+  ],
+  "showing": 3,
+  "solana_only": false,
+  "tip": "Use 'botwallet x402 fetch <url>' to probe any API",
+  "total": 120
+}
+--- stderr
+=== x402_discover/results (human)
+--- stdout
+
+── x402 Bazaar — Discovered APIs ───────────────────
+  Search: weather
+  Showing 3 of 120 total
+
+  #  URL                                                 Description                          Price (USDC)  Network  
+  ─  ──────────────────────────────────────────────────  ───────────────────────────────────  ────────────  ───────  
+  1  https://weather.example.com/forecast/with/a/rat...  Hourly weather forecasts for any...  $0.0100       solana   
+  2  https://weth.example.com/data                       https://weth.example.com/data        —             base     
+  3  https://free.example.com/                           https://free.example.com/            —                      
+
+
+💡 Probe an API: botwallet x402 fetch <url>
+
+💡 Next page: botwallet x402 discover --bazaar --offset 2
+--- stderr
+=== x402_discover/empty (human)
+--- stdout
+⚠️  No APIs found
+
+💡 Try --all to include non-Solana networks
+
+💡 Try a broader search or omit the query to list all
+⚠️  No APIs found
+--- stderr
+=== x402_catalog/entries (json)
+--- stdout
+{
+  "results": [
+    {
+      "category": "data",
+      "description": "Forecasts for any city on Earth, hourly and daily, with alerts",
+      "metadata": {
+        "source": "test"
+      },
+      "method": "GET",
+      "name": "Weather",
+      "network": "solana",
+      "next_step": "botwallet x402 fetch https://api.example.com/weather",
+      "price_usdc": 0.01,
+      "slug": "weather",
+      "url": "https://api.example.com/weather"
+    },
+    {
+      "category": "ai",
+      "description": "Summaries",
+      "method": "post",
+      "name": "Summarize",
+      "network": "solana",
+      "next_step": "botwallet x402 fetch --method POST https://api.example.com/sum",
+      "price_usdc": 0.005,
+      "slug": "summarize",
+      "url": "https://api.example.com/sum"
+    }
+  ],
+  "tip": "Use 'botwallet x402 fetch <url>' to probe any API",
+  "total": 2
+}
+--- stderr
+=== x402_catalog/entries (human)
+--- stdout
+
+── x402 Catalog — Verified Solana APIs ─────────────
+  2 APIs available
+
+  #  Name       Description                                         Price (USDC)  Category  
+  ─  ─────────  ──────────────────────────────────────────────────  ────────────  ────────  
+  1  Weather    Forecasts for any city on Earth, hourly and dai...  $0.0100       data      
+  2  Summarize  Summaries                                           $0.0050       ai        
+
+  Weather  →  https://api.example.com/weather
+  Summarize  →  https://api.example.com/sum
+
+
+💡 Probe an API: botwallet x402 fetch <url>
+
+💡 Search the full Bazaar: botwallet x402 discover --bazaar
+--- stderr
+=== x402_catalog/empty (human)
+--- stdout
+⚠️  No APIs found in catalog
+
+💡 Try a broader search or omit the query to list all
+
+💡 Use --bazaar to search the full x402 Bazaar (all networks)
+--- stderr

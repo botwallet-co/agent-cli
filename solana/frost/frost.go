@@ -124,8 +124,8 @@ func GenerateNonce() (*SigningNonce, error) {
 // Inputs:
 //   - message:          the Solana transaction message bytes (what we're signing)
 //   - keyShare:         our key share secret (s1)
-//   - nonce:            our nonce for this round (r1, from GenerateNonce)
-//   - ourCommitment:    our nonce commitment (R1 = r1*G)
+//   - nonce:            our nonce for this round (r1, from GenerateNonce);
+//     our commitment R1 = r1*G is nonce.Commitment
 //   - theirCommitment:  the other party's nonce commitment (R2)
 //   - groupKey:         the combined public key (A = A1 + A2)
 //

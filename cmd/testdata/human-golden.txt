@@ -1,0 +1,618 @@
+=== fund ask (exit 0)
+--- stdout
+✅ Fund request submitted!
+
+── Request Details ───────────────────────────────────
+  Request ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Amount: $50.00
+  Reason: API costs
+  Notified: owner@example.com
+  Funding Link: https://botwallet.co/pay/FR12
+
+💡 Your owner will see this in their dashboard.
+--- stderr
+=== fund ask amount fallback (exit 0)
+--- stdout
+✅ Fund request submitted!
+
+── Request Details ───────────────────────────────────
+  Request ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Amount: $50.00
+  Reason: API costs
+
+💡 Your owner will see this in their dashboard.
+--- stderr
+=== fund ask missing fields (exit 0)
+--- stdout
+✅ Fund request submitted!
+
+── Request Details ───────────────────────────────────
+  Request ID: <nil>
+  Amount: $0.00
+  Reason: <nil>
+
+💡 Your owner will see this in their dashboard.
+--- stderr
+=== fund list (exit 0)
+--- stdout
+
+── Fund Requests ─────────────────────────────────────
+  ID           Status     Amount  Reason                          
+  ───────────  ─────────  ──────  ──────────────────────────────  
+  3f6c1a2e...  pending    $50.00  Need to purchase database c...  
+  fr-short     funded     $12.50  Short                           
+               dismissed  $3.00                                   
+
+  Total: 3 requests
+
+💡 Use --limit and --offset for more results.
+--- stderr
+=== fund list empty (exit 0)
+--- stdout
+
+── Fund Requests ─────────────────────────────────────
+ℹ️  No fund requests found.
+
+💡 Request funds with: botwallet fund ask <amount> --reason "..."
+--- stderr
+=== paylink get pending (exit 0)
+--- stdout
+
+── Payment Link ──────────────────────────────────────
+  Paylink ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Status: pending
+  Amount: $25.00
+  Description: Research report
+  Expires: 2026-10-02T12:00:00Z
+  Payment URL: https://botwallet.co/pay/AB12CD
+
+💡 Share the payment URL to get paid!
+--- stderr
+=== paylink get completed (exit 0)
+--- stdout
+
+── Payment Link ──────────────────────────────────────
+  Paylink ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Status: completed
+  Amount: $25.00
+  Description: Research report
+  Received (after fee): $24.50
+  Paid by: @data-bot
+  Paid at: 2026-10-01T10:00:00Z
+--- stderr
+=== paylink get completed without receipt (exit 0)
+--- stdout
+
+── Payment Link ──────────────────────────────────────
+  Paylink ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Status: completed
+  Amount: $25.00
+  Description: <nil>
+  Received (after fee): $24.50
+  Paid at: <nil>
+--- stderr
+=== paylink get expired (exit 0)
+--- stdout
+
+── Payment Link ──────────────────────────────────────
+  Paylink ID: <nil>
+  Status: expired
+  Amount: $5.00
+  Description: <nil>
+--- stderr
+=== paylink list (exit 0)
+--- stdout
+
+── Payment Links ─────────────────────────────────────
+  Code    Status     Amount  Description                     ID                                    
+  ──────  ─────────  ──────  ──────────────────────────────  ────────────────────────────────────  
+  AB12CD  pending    $25.00  Research report for the thi...  3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23  
+          completed  $5.00                                                                         
+
+  Total: 2 paylinks
+
+💡 Use --limit and --offset for more results.
+--- stderr
+=== paylink list legacy key (exit 0)
+--- stdout
+
+── Payment Links ─────────────────────────────────────
+  Code  Status   Amount  Description  ID  
+  ────  ───────  ──────  ───────────  ──  
+  ZZ99  expired  $1.00   Old              
+
+  Total: 0 paylinks
+--- stderr
+=== paylink list empty (exit 0)
+--- stdout
+
+── Payment Links ─────────────────────────────────────
+ℹ️  No payment links found.
+
+💡 Create one with: botwallet paylink create [amount] --desc "..."
+--- stderr
+=== paylink cancel (exit 0)
+--- stdout
+✅ Payment link cancelled!
+  Paylink ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+--- stderr
+=== paylink create items (exit 0)
+--- stdout
+
+✓ 2 items, total $20.00
+
+✅ Payment request created!
+
+┌───────────────────────────────────┐
+│    Share this link to get paid    │
+├───────────────────────────────────┤
+│  https://botwallet.co/pay/AB12CD  │
+└───────────────────────────────────┘
+
+── Request Details ───────────────────────────────────
+  Request ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Short Code: AB12CD
+  Amount: $20.00
+  Description: Services
+
+💡 Send as invoice: botwallet paylink send 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23 --to recipient@example.com
+--- stderr
+=== paylink create one item (exit 0)
+--- stdout
+
+✓ 1 item, total $10.00
+
+✅ Payment request created!
+
+── Request Details ───────────────────────────────────
+  Request ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Amount: $10.00
+  Description: Setup
+
+💡 Send as invoice: botwallet paylink send 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23 --to recipient@example.com
+--- stderr
+=== paylink send to a bot (exit 0)
+--- stdout
+✅ Payment request delivered to @data-bot's inbox!
+
+── Details ───────────────────────────────────────────
+  Sent to: @data-bot
+  Amount: $25.00
+  Short Code: AB12CD
+
+💡 The bot can pay with: botwallet pay --paylink 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+
+💡 Check status with: botwallet paylink get 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+--- stderr
+=== pay cancel (exit 0)
+--- stdout
+✅ Payment cancelled!
+  Transaction ID: 3f6c1a2e-9b4d-4e8f-a1c2-7d5e9f0b1a23
+  Was: pre_approved
+  Amount: $10.00
+--- stderr
+=== pay cancel fallback amount (exit 0)
+--- stdout
+✅ Payment cancelled!
+  Amount: $2.00
+--- stderr
+=== wallet owner found (exit 0)
+--- stdout
+✅ Owner updated!
+  Pledged to: boss@example.com
+ℹ️  This user exists - they can see the wallet in their portal now.
+  Claim URL: https://app.botwallet.co/claim/abc
+  Claim Code: ABC123
+--- stderr
+=== wallet owner new (exit 0)
+--- stdout
+✅ Owner updated!
+  Pledged to: boss@example.com
+ℹ️  When this user signs up, the wallet will appear in their portal.
+  Claim Code: <nil>
+--- stderr
+=== wallet rename (exit 0)
+--- stdout
+✅ Wallet renamed!
+  Name: Research Budget
+  Username: @orion-1234 (unchanged)
+
+💡 Your username is permanent — it's used in fund URLs and payment links.
+--- stderr
+=== withdraw get completed (exit 0)
+--- stdout
+
+── Withdrawal Status ─────────────────────────────────
+  Withdrawal ID: wd-1
+  Status: COMPLETED ✓
+  Amount: $50.00
+  Fees: $0.50
+  You Received: $50.00
+  To Address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+  Created: 2026-10-01T09:00:00Z
+
+── Blockchain Details ────────────────────────────────
+  Completed: 2026-10-01T09:05:00Z
+  Solana TX: 5VERv8NMvzbJ
+
+💡 View on Solscan: https://solscan.io/tx/5VERv8NMvzbJ
+--- stderr
+=== withdraw get approved (exit 0)
+--- stdout
+
+── Withdrawal Status ─────────────────────────────────
+  Withdrawal ID: wd-1
+  Status: APPROVED ✓
+  Amount: $50.00
+  Platform fee: $0.50
+  Account setup (one-time, new address): $0.25
+  Total fees: $0.75
+  You Received: $0.00
+  To Address: 
+  Created: 
+
+✅ Owner approved! Ready to execute.
+
+
+── Next Step ─────────────────────────────────────────
+ℹ️  Run to execute:
+  botwallet withdraw confirm wd-1
+--- stderr
+=== withdraw get awaiting (exit 0)
+--- stdout
+
+── Withdrawal Status ─────────────────────────────────
+  Withdrawal ID: wd-1
+  Status: AWAITING APPROVAL
+  Amount: $50.00
+  You Received: $0.00
+  To Address: 
+  Created: 
+
+⚠️  Waiting for owner approval.
+  Approval URL: https://app.botwallet.co/approve/ap-1
+
+💡 After approval: botwallet withdraw confirm wd-1
+--- stderr
+=== withdraw get pending (exit 0)
+--- stdout
+
+── Withdrawal Status ─────────────────────────────────
+  Withdrawal ID: wd-1
+  Status: SIGNING...
+  Amount: $0.00
+  You Received: $0.00
+  To Address: 
+  Created: 
+ℹ️  FROST signing in progress...
+--- stderr
+=== withdraw get failed (exit 0)
+--- stdout
+
+── Withdrawal Status ─────────────────────────────────
+  Withdrawal ID: wd-1
+  Status: FAILED ✗
+  Amount: $0.00
+  You Received: $0.00
+  To Address: 
+  Created: 
+  Reason: Blockhash expired
+--- stderr
+❌ Withdrawal failed.
+=== withdraw get denied (exit 0)
+--- stdout
+
+── Withdrawal Status ─────────────────────────────────
+  Withdrawal ID: wd-1
+  Status: DENIED ✗
+  Amount: $0.00
+  You Received: $0.00
+  To Address: 
+  Created: 
+--- stderr
+❌ Withdrawal denied by owner.
+=== withdraw get expired (exit 0)
+--- stdout
+
+── Withdrawal Status ─────────────────────────────────
+  Withdrawal ID: wd-1
+  Status: EXPIRED
+  Amount: $0.00
+  You Received: $0.00
+  To Address: 
+  Created: 
+⚠️  Withdrawal expired. Create a new request.
+--- stderr
+=== withdraw get other (exit 0)
+--- stdout
+
+── Withdrawal Status ─────────────────────────────────
+  Withdrawal ID: wd-1
+  Status: reversed
+  Amount: $0.00
+  You Received: $0.00
+  To Address: 
+  Created: 
+--- stderr
+=== wallet rename (json) (exit 0)
+--- stdout
+{
+  "name": "Research Budget",
+  "note": "Display name updated. Your username @orion-1234 is unchanged.",
+  "username": "orion-1234"
+}
+--- stderr
+=== pay confirm (exit 0)
+--- stdout
+ℹ️  Retrieving transaction tx-1...
+
+┌──────────────────────────────────────────────────┐
+│                 Confirm Payment                  │
+├──────────────────────────────────────────────────┤
+│  To:     @9h3NctAT...                            │
+│  Amount: $10.00 USDC                             │
+│  Fee:    $0.25 USDC (incl. $0.15 account setup)  │
+│  Total:  $10.25 USDC                             │
+│  Network: mainnet-beta                           │
+└──────────────────────────────────────────────────┘
+
+ℹ️  Signing with threshold protocol...
+ℹ️  Checked the transaction: 10.00 USDC to 9h3NctATCQvBt2QD7k7LYBZEmrEuPyvWNRicVZwPBc6M, plus a 0.25 USDC fee.
+✅ Payment sent!
+
+── Payment Details ───────────────────────────────────
+  Amount: $0.00
+  Total: $0.00
+
+--- stderr
+=== withdraw confirm (exit 0)
+--- stdout
+ℹ️  Retrieving withdrawal wd-1...
+
+┌──────────────────────────────────────────────────┐
+│                Confirm Withdrawal                │
+├──────────────────────────────────────────────────┤
+│  To:     9h3NctAT...VZwPBc6M                     │
+│  Amount: $10.00 USDC                             │
+│  Fee:    $0.25 USDC (incl. $0.15 account setup)  │
+│  Total:  $10.25 USDC                             │
+│  Network: mainnet-beta                           │
+└──────────────────────────────────────────────────┘
+
+ℹ️  Signing with threshold protocol...
+ℹ️  Checked the transaction: 10.00 USDC to 9h3NctATCQvBt2QD7k7LYBZEmrEuPyvWNRicVZwPBc6M, plus a 0.25 USDC fee.
+✅ Withdrawal submitted to Solana!
+
+── Withdrawal Details ────────────────────────────────
+  Amount: $0.00
+  To Address: 
+--- stderr
+=== x402 fetch /free (exit 0)
+--- stdout
+ℹ️  Probing http://api.example.test/free ...
+✅ API returned data (free, no payment required)
+  URL: http://api.example.test/free
+  Status: 200
+
+{"temp":20}
+--- stderr
+=== x402 fetch /missing (exit 0)
+--- stdout
+ℹ️  Probing http://api.example.test/missing ...
+⚠️  API returned HTTP 404 (no payment required)
+  URL: http://api.example.test/missing
+  Status: 404
+
+no such thing
+--- stderr
+=== x402 fetch /base-only (exit 0)
+--- stdout
+ℹ️  Probing http://api.example.test/base-only ...
+⚠️  API requires payment but offers no option to pay in USDC on Solana
+  Available networks: base
+
+💡 Botwallet pays in USDC on Solana only.
+--- stderr
+=== wallet list (json) (exit 0)
+--- stdout
+{
+  "count": 3,
+  "wallets": [
+    {
+      "local_name": "legacy",
+      "is_default": false,
+      "seed_file": "seeds/legacy.seed"
+    },
+    {
+      "local_name": "main",
+      "username": "main-user",
+      "display_name": "main",
+      "public_key": "<address of main>",
+      "is_default": true,
+      "seed_file": "seeds/main.seed"
+    },
+    {
+      "local_name": "research-budget",
+      "username": "research-1234",
+      "display_name": "Research Budget",
+      "is_default": false,
+      "seed_file": "seeds/research-budget.seed"
+    }
+  ]
+}
+--- stderr
+=== wallet list (exit 0)
+--- stdout
+
+── Stored Wallets ────────────────────────────────────
+  legacy                (no username saved)
+→ main                  @main-user
+  research-budget (Research Budget)  @research-1234
+
+
+💡 Use 'botwallet wallet use <name>' to switch default wallet
+--- stderr
+=== wallet list empty (exit 1)
+--- stdout
+
+   → Run 'botwallet wallet create' to create a wallet
+--- stderr
+❌ No wallets found
+=== wallet use (json) (exit 0)
+--- stdout
+{
+  "already_default": false,
+  "default": "research-budget",
+  "display_name": "Research Budget",
+  "public_key": "",
+  "success": true,
+  "username": "research-1234"
+}
+--- stderr
+=== wallet use already default (exit 0)
+--- stdout
+
+✅ Already using: research-budget (Research Budget)
+   Username: @research-1234
+
+--- stderr
+=== wallet use (exit 0)
+--- stdout
+
+✅ Now using: main
+   Username: @main-user
+
+--- stderr
+=== wallet use already default (json) (exit 0)
+--- stdout
+{
+  "already_default": true,
+  "default": "main",
+  "display_name": "main",
+  "public_key": "<address of main>",
+  "success": true,
+  "username": "main-user"
+}
+--- stderr
+=== wallet use unknown (exit 1)
+--- stdout
+
+   → Available wallets: [legacy main research-budget]
+--- stderr
+❌ Wallet 'nope' not found
+=== wallet backup (json) (exit 0)
+--- stdout
+{
+  "action": "backup_initiated",
+  "code": "<code>",
+  "expires_in": "5 minutes",
+  "expires_in_seconds": 300,
+  "next_step": "botwallet wallet reveal-backup --code <code>",
+  "warning": "This will reveal Key 1 — 12 secret words that are half of the wallet's full backup key. Only proceed if the wallet OWNER asked for their backup key. Key 1 alone cannot access funds."
+}
+--- stderr
+=== wallet reveal-backup (json) (exit 0)
+--- stdout
+{
+  "description": "12 secret words — the first half of the wallet backup key",
+  "instructions": "Share these 12 words with the wallet owner only, and send them privately (never in a shared or public channel). The owner needs Key 1 to withdraw from the Botwallet dashboard and to recover the wallet. Key 2 can be retrieved from the Botwallet dashboard.",
+  "key": "Key 1",
+  "secret_words": "<12 words of main>",
+  "wallet": "main"
+}
+--- stderr
+=== wallet backup (exit 0)
+--- stdout
+
+╔══════════════════════════════════════════════════════╗
+║              ⚠️  SENSITIVE KEY MATERIAL              ║
+╠══════════════════════════════════════════════════════╣
+║  This command reveals Key 1 — 12 secret words        ║
+║  that are half of the wallet's full backup key.      ║
+║                                                      ║
+║  Only run this if the wallet OWNER has specifically  ║
+║  asked you to share their backup key.                ║
+║                                                      ║
+║  Key 1 alone cannot access funds, but should be      ║
+║  treated as highly confidential.                     ║
+╚══════════════════════════════════════════════════════╝
+
+  To proceed, run:
+    botwallet wallet reveal-backup --code <code>
+
+ℹ️  Code expires in 5 minutes.
+--- stderr
+=== wallet reveal-backup (exit 0)
+--- stdout
+
+⚠️  Key 1 (12 secret words) for "main":
+
+    <12 words of main>
+
+ℹ️  Share these 12 words with the wallet owner only, privately (never in a shared or public channel).
+ℹ️  The owner needs Key 1 to withdraw from the Botwallet dashboard and to recover the wallet.
+ℹ️  Key 2 can be retrieved from the Botwallet dashboard.
+
+--- stderr
+=== wallet export (json) (exit 0)
+--- stdout
+{
+  "export_id": "0b6f3f5e-3c1a-4a52-9a43-2f0d7c9e8b11",
+  "file": "<export file>",
+  "import_cmd": "botwallet wallet import main.bwlt",
+  "note": "Anyone with this file can import the wallet until it stops working. Share it only privately, and delete it once the wallet is imported.",
+  "owner_action": "This file only moves the wallet to another machine; it is not a backup. To back up the wallet, the owner needs Key 1 (share it with 'botwallet wallet backup' when the owner asks for it) and Key 2 (from the Botwallet dashboard).",
+  "success": true,
+  "valid_for": "Up to 5 imports within 24 hours of this export. After that the file stops working.",
+  "wallet_name": "main"
+}
+--- stderr
+=== wallet import (json) (exit 0)
+--- stdout
+{
+  "is_default": true,
+  "public_key": "<address of main>",
+  "success": true,
+  "username": "main-user",
+  "wallet_name": "main"
+}
+--- stderr
+=== wallet export (exit 0)
+--- stdout
+ℹ️  Exporting wallet "main"...
+
+✅ Wallet exported successfully!
+
+  Wallet: main
+  File: <export file>
+  Export ID: 0b6f3f5e-3c1a-4a52-9a43-2f0d7c9e8b11
+
+ℹ️  Import on the other machine within 24 hours: botwallet wallet import main-human.bwlt
+ℹ️  The file works for up to 5 imports within 24 hours, then it stops working.
+⚠️  Anyone with this file can import the wallet until then. Share it only privately, and delete it once the wallet is imported.
+
+ℹ️  This file is not a backup. To back up the wallet, the owner needs Key 1 (shared with 'botwallet wallet backup' when the owner asks for it) and Key 2 (from the Botwallet dashboard).
+--- stderr
+=== wallet import (exit 0)
+--- stdout
+ℹ️  Importing wallet from main-human.bwlt...
+
+✅ Wallet imported successfully!
+
+  Wallet: main
+  Username: main-user
+  Deposit Address: <address of main>
+--- stderr
+=== ping (json) (exit 0)
+--- stdout
+{
+  "timestamp": "2026-10-01T12:00:00Z",
+  "version": "1.2.3"
+}
+--- stderr
+=== ping (exit 0)
+--- stdout
+✅ API is reachable!
+  Version: 1.2.3
+  Timestamp: 2026-10-01T12:00:00Z
+--- stderr

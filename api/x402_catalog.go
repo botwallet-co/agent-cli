@@ -1,11 +1,4 @@
-// =============================================================================
-// x402 Curated API Catalog
-// =============================================================================
-// Queries Botwallet's curated catalog of verified x402 APIs via the
-// public API endpoint. Only contains APIs tested and confirmed on Solana.
-// =============================================================================
-
-package x402
+package api
 
 import (
 	"encoding/json"
@@ -15,8 +8,8 @@ import (
 	"net/url"
 )
 
-// CatalogEntry represents a single API in our curated catalog.
-type CatalogEntry struct {
+// X402CatalogEntry is one API in Botwallet's curated x402 catalog.
+type X402CatalogEntry struct {
 	ID          string                 `json:"id"`
 	Slug        string                 `json:"slug"`
 	Name        string                 `json:"name"`
@@ -34,10 +27,18 @@ type CatalogEntry struct {
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
+const (
+	// catalogUserAgent is the User-Agent of catalog requests, which have
+	// always identified themselves as the CLI's x402 client.
+	catalogUserAgent = "Botwallet-CLI/x402"
+
+	maxCatalogBody = 5 * 1024 * 1024
+)
+
 type catalogResponse struct {
 	Success bool `json:"success"`
 	Data    struct {
-		Entries []CatalogEntry `json:"entries"`
+		Entries []X402CatalogEntry `json:"entries"`
 	} `json:"data"`
 	Error *struct {
 		Code    string `json:"code"`
@@ -45,10 +46,11 @@ type catalogResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// DiscoverCatalog queries Botwallet's curated x402 API catalog via the public endpoint.
-func DiscoverCatalog(apiBaseURL string, query string) ([]CatalogEntry, error) {
-	endpoint := apiBaseURL + "/public?action=x402_catalog"
-
+// X402Catalog lists Botwallet's curated catalog of verified x402 APIs,
+// filtered by query if it is not "". The catalog is public: no API key is
+// sent.
+func (c *Client) X402Catalog(query string) ([]X402CatalogEntry, error) {
+	endpoint := c.BaseURL + "/public?action=x402_catalog"
 	if query != "" {
 		endpoint += "&query=" + url.QueryEscape(query)
 	}
@@ -58,10 +60,9 @@ func DiscoverCatalog(apiBaseURL string, query string) ([]CatalogEntry, error) {
 		return nil, fmt.Errorf("failed to create catalog request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "Botwallet-CLI/x402")
+	req.Header.Set("User-Agent", catalogUserAgent)
 
-	client := &http.Client{Timeout: requestTimeout}
-	resp, err := client.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach catalog: %w", err)
 	}
@@ -72,9 +73,12 @@ func DiscoverCatalog(apiBaseURL string, query string) ([]CatalogEntry, error) {
 		return nil, fmt.Errorf("catalog returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxDiscoveryBody)))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxCatalogBody+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read catalog response: %w", err)
+	}
+	if len(data) > maxCatalogBody {
+		return nil, fmt.Errorf("catalog response exceeds %d bytes", maxCatalogBody)
 	}
 
 	var result catalogResponse

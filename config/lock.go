@@ -17,6 +17,9 @@
 //
 // Atomic write: write config.json.<random>.tmp in the same folder (0600),
 // fsync, close, then rename it over config.json.
+//
+// New-file write (seed and .bwlt files): create with O_EXCL (0600), so an
+// existing file is never replaced, fsync, close.
 // =============================================================================
 
 package config
@@ -41,25 +44,25 @@ const (
 // longer than lockWait.
 var ErrConfigBusy = errors.New("another botwallet command is updating config.json; try again in a moment")
 
-// withConfigLock runs fn while holding the config lock. fn must use the
-// unlocked primitives (LoadConfig, SaveConfig, seed writers) and must not
-// call another function that takes the lock.
-func withConfigLock(fn func() error) error {
+// withConfigLock runs fn with the config folder while holding the config
+// lock. fn must use the unlocked primitives (loadConfigFrom, saveConfig,
+// seed writers) and must not call another function that takes the lock.
+func withConfigLock(fn func(dir Dir) error) error {
 	dir, err := ResolveConfigDir()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(string(dir), 0700); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	release, err := acquireLock(filepath.Join(dir, lockFileName))
+	release, err := acquireLock(dir.lockFile())
 	if err != nil {
 		return err
 	}
 	defer release()
 
-	return fn()
+	return fn(dir)
 }
 
 // acquireLock creates the lock file, waiting for other holders, and returns
@@ -108,18 +111,39 @@ func writeFileAtomic(path string, data []byte) (err error) {
 		}
 	}()
 
-	if _, err = tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err = tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err = tmp.Close(); err != nil {
+	if err = writeSyncClose(tmp, data); err != nil {
 		return err
 	}
 	return renameWithRetry(tmpPath, path)
+}
+
+// writeNewFile creates path with 0600 permissions and writes data to disk
+// (fsync). It fails if path already exists (the error wraps fs.ErrExist).
+// If anything fails after the file was created, the file is removed again:
+// this call created it, so it holds nothing else.
+func writeNewFile(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	if err := writeSyncClose(f, data); err != nil {
+		_ = os.Remove(path)
+		return err
+	}
+	return nil
+}
+
+// writeSyncClose writes data to f, flushes it to disk and closes f. f is
+// closed even if writing fails; the first error is returned.
+func writeSyncClose(f *os.File, data []byte) error {
+	_, err := f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 // renameWithRetry renames oldPath over newPath. On Windows the rename fails

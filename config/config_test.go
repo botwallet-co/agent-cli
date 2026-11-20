@@ -30,7 +30,7 @@ func TestResolveConfigDir(t *testing.T) {
 	t.Run("default is ~/.botwallet", func(t *testing.T) {
 		want := useTempHome(t)
 		got, err := ResolveConfigDir()
-		if err != nil || got != want {
+		if err != nil || string(got) != want {
 			t.Fatalf("ResolveConfigDir() = %q, %v; want %q", got, err, want)
 		}
 	})
@@ -40,7 +40,7 @@ func TestResolveConfigDir(t *testing.T) {
 		override := t.TempDir()
 		t.Setenv(ConfigDirEnv, override)
 		got, err := ResolveConfigDir()
-		if err != nil || got != filepath.Clean(override) {
+		if err != nil || string(got) != filepath.Clean(override) {
 			t.Fatalf("ResolveConfigDir() = %q, %v; want %q", got, err, override)
 		}
 	})
@@ -63,7 +63,7 @@ func TestResolveConfigDir(t *testing.T) {
 		t.Cleanup(func() { userDBHome = orig })
 
 		got, err := ResolveConfigDir()
-		if err != nil || got != filepath.Join(dbHome, ".botwallet") {
+		if err != nil || string(got) != filepath.Join(dbHome, ".botwallet") {
 			t.Fatalf("ResolveConfigDir() = %q, %v; want %q", got, err, filepath.Join(dbHome, ".botwallet"))
 		}
 	})
@@ -94,11 +94,17 @@ func TestResolveConfigDir(t *testing.T) {
 		if _, err := LoadConfig(); !errors.Is(err, ErrNoHomeDir) {
 			t.Errorf("LoadConfig() error = %v, want ErrNoHomeDir", err)
 		}
-		if err := SaveConfig(&Config{}); !errors.Is(err, ErrNoHomeDir) {
-			t.Errorf("SaveConfig() error = %v, want ErrNoHomeDir", err)
+		if _, err := AddWalletWithInfo("my-bot", "u", "My Bot", "k", "a", testMnemonic); !errors.Is(err, ErrNoHomeDir) {
+			t.Errorf("AddWalletWithInfo() error = %v, want ErrNoHomeDir", err)
 		}
-		if _, err := SaveSeed("my-bot", "words"); !errors.Is(err, ErrNoHomeDir) {
-			t.Errorf("SaveSeed() error = %v, want ErrNoHomeDir", err)
+		if _, _, err := SaveNewSeed("my-bot", testMnemonic, "a"); !errors.Is(err, ErrNoHomeDir) {
+			t.Errorf("SaveNewSeed() error = %v, want ErrNoHomeDir", err)
+		}
+		if err := PrepareNewWallet(); !errors.Is(err, ErrNoHomeDir) {
+			t.Errorf("PrepareNewWallet() error = %v, want ErrNoHomeDir", err)
+		}
+		if _, err := SavePendingWallet(PendingWallet{LocalName: "my-bot"}); !errors.Is(err, ErrNoHomeDir) {
+			t.Errorf("SavePendingWallet() error = %v, want ErrNoHomeDir", err)
 		}
 		if err := WriteBackupNonce("abcd", "my-bot"); !errors.Is(err, ErrNoHomeDir) {
 			t.Errorf("WriteBackupNonce() error = %v, want ErrNoHomeDir", err)
@@ -108,6 +114,26 @@ func TestResolveConfigDir(t *testing.T) {
 			t.Errorf("files were written to the current directory: %v", entries)
 		}
 	})
+}
+
+// configDir returns the resolved config folder of the current test.
+func configDir(t *testing.T) Dir {
+	t.Helper()
+	dir, err := ResolveConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// freeName is the local name a new wallet called name would get now.
+func freeName(t *testing.T, name string) string {
+	t.Helper()
+	cfg, dir, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return freeLocalName(dir, cfg, name)
 }
 
 // testMnemonic is a fixed BIP39 phrase; these tests never touch a network.
@@ -221,10 +247,10 @@ func TestStaleLockIsTakenOver(t *testing.T) {
 
 func TestSaveConfigReplacesFileWholly(t *testing.T) {
 	dir := useTempHome(t)
-	if err := SaveConfig(&Config{Wallets: map[string]WalletEntry{"a": {Username: "a"}}}); err != nil {
+	if err := saveConfig(Dir(dir), &Config{Wallets: map[string]WalletEntry{"a": {Username: "a"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := SaveConfig(&Config{Wallets: map[string]WalletEntry{"b": {Username: "b"}}}); err != nil {
+	if err := saveConfig(Dir(dir), &Config{Wallets: map[string]WalletEntry{"b": {Username: "b"}}}); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := LoadConfig()
@@ -275,8 +301,8 @@ func TestSecondWalletNeverOverwritesFirstSeed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := GenerateLocalName("My Bot"); got != "my-bot-2" {
-		t.Errorf("GenerateLocalName with an orphaned seed file = %q, want my-bot-2", got)
+	if got := freeName(t, "My Bot"); got != "my-bot-2" {
+		t.Errorf("free local name with an orphaned seed file = %q, want my-bot-2", got)
 	}
 
 	second, err := AddWalletWithInfo("My Bot", "second-user", "My Bot", "key-2", "addr-2", phrase("two"))
@@ -294,11 +320,11 @@ func TestSecondWalletNeverOverwritesFirstSeed(t *testing.T) {
 	}
 
 	// Writing straight onto an existing seed file is refused.
-	if _, err := SaveSeed("my-bot", phrase("three")); !errors.Is(err, fs.ErrExist) {
-		t.Errorf("SaveSeed onto an existing file: error = %v, want fs.ErrExist", err)
+	if _, err := saveSeed(Dir(dir), "my-bot", phrase("three"), ""); !errors.Is(err, fs.ErrExist) {
+		t.Errorf("saveSeed onto an existing file: error = %v, want fs.ErrExist", err)
 	}
 	if got := readFile(t, first.SeedPath); got != firstSeed {
-		t.Fatalf("SaveSeed changed an existing seed file")
+		t.Fatalf("saveSeed changed an existing seed file")
 	}
 }
 
@@ -360,13 +386,17 @@ func TestWalletSeedPathFindsBareMCPSeedFile(t *testing.T) {
 	if err := os.WriteFile(inSeeds, []byte(testMnemonic+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	got := WalletSeedPath("mcp-bot", WalletEntry{SeedFile: "mcp-bot.seed"})
+	got := walletSeedPath(Dir(dir), "mcp-bot", WalletEntry{SeedFile: "mcp-bot.seed"})
 	if got != inSeeds {
-		t.Errorf("WalletSeedPath = %q, want %q", got, inSeeds)
+		t.Errorf("walletSeedPath = %q, want %q", got, inSeeds)
 	}
-	got = WalletSeedPath("cli-bot", WalletEntry{SeedFile: "seeds/cli-bot.seed"})
+	got = walletSeedPath(Dir(dir), "cli-bot", WalletEntry{SeedFile: "seeds/cli-bot.seed"})
 	if want := filepath.Join(dir, "seeds", "cli-bot.seed"); got != want {
-		t.Errorf("WalletSeedPath = %q, want %q", got, want)
+		t.Errorf("walletSeedPath = %q, want %q", got, want)
+	}
+	got = walletSeedPath(Dir(dir), "My Bot", WalletEntry{})
+	if want := filepath.Join(dir, "seeds", "my-bot.seed"); got != want {
+		t.Errorf("walletSeedPath without seed_file = %q, want %q", got, want)
 	}
 }
 
@@ -405,8 +435,8 @@ func TestNewWalletSeedLifecycle(t *testing.T) {
 	if words, err := LoadSeedFromPath(kept); err != nil || words != phrase("one") {
 		t.Errorf("kept seed = %q, %v", words, err)
 	}
-	if got := GenerateLocalName("My Bot"); got != "my-bot" {
-		t.Errorf("GenerateLocalName after keeping the seed = %q, want my-bot", got)
+	if got := freeName(t, "My Bot"); got != "my-bot" {
+		t.Errorf("free local name after keeping the seed = %q, want my-bot", got)
 	}
 
 	// Refused outright: the unused seed is removed.
@@ -569,11 +599,11 @@ func TestResolveWalletWithoutConfig(t *testing.T) {
 
 	// A broken config.json does not block server calls made with an env key,
 	// but anything that needs Key 1 reports the config problem.
-	dir, _ := ResolveConfigDir()
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	dir := configDir(t)
+	if err := os.MkdirAll(string(dir), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{not json"), 0600); err != nil {
+	if err := os.WriteFile(dir.ConfigFile(), []byte("{not json"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("BOTWALLET_API_KEY", "key-env")
@@ -594,7 +624,7 @@ func writeNonceAged(t *testing.T, code string, age time.Duration) {
 	}
 	data, _ := json.Marshal(BackupNonce{Code: code, Wallet: "my-bot",
 		CreatedAt: time.Now().Add(-age).UTC().Format(time.RFC3339)})
-	if err := os.WriteFile(BackupNoncePath(), data, 0600); err != nil {
+	if err := os.WriteFile(configDir(t).BackupNonceFile(), data, 0600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -620,7 +650,7 @@ func TestBackupNonceWindow(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), BackupNonceTTLText()) {
 		t.Fatalf("expired code: err = %v, want the expiry naming %s", err, BackupNonceTTLText())
 	}
-	if _, statErr := os.Stat(BackupNoncePath()); !errors.Is(statErr, fs.ErrNotExist) {
+	if _, statErr := os.Stat(configDir(t).BackupNonceFile()); !errors.Is(statErr, fs.ErrNotExist) {
 		t.Error("expired code was not deleted")
 	}
 }

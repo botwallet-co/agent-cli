@@ -14,28 +14,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/botwallet-co/agent-cli/solana"
 )
 
 const (
-	defaultFacilitatorURL = "https://api.cdp.coinbase.com/platform/v2/x402"
-	maxDiscoveryBody      = 5 * 1024 * 1024 // 5 MB cap for discovery responses
-)
+	// DefaultFacilitatorURL is the x402 facilitator queried when neither
+	// --facilitator nor X402_FACILITATOR_URL names another.
+	DefaultFacilitatorURL = "https://api.cdp.coinbase.com/platform/v2/x402"
 
-// DefaultFacilitatorURL returns the default x402 facilitator base URL.
-func DefaultFacilitatorURL() string {
-	return defaultFacilitatorURL
-}
+	maxDiscoveryBody = 5 * 1024 * 1024 // 5 MB cap for discovery responses
+)
 
 // DiscoverAPIs queries the facilitator's discovery endpoint and returns
 // the raw catalog of x402-enabled resources.
 func DiscoverAPIs(facilitatorURL string, limit, offset int) (*DiscoveryResponse, error) {
-	if facilitatorURL == "" {
-		facilitatorURL = defaultFacilitatorURL
-	}
-
 	endpoint := fmt.Sprintf("%s/discovery/resources?type=http&limit=%d&offset=%d",
 		strings.TrimRight(facilitatorURL, "/"), limit, offset)
 
@@ -44,10 +41,9 @@ func DiscoverAPIs(facilitatorURL string, limit, offset int) (*DiscoveryResponse,
 		return nil, fmt.Errorf("failed to create discovery request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "Botwallet-CLI/x402")
+	req.Header.Set("User-Agent", userAgent)
 
-	client := &http.Client{Timeout: requestTimeout}
-	resp, err := client.Do(req)
+	resp, err := facilitatorClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach facilitator: %w", err)
 	}
@@ -58,12 +54,11 @@ func DiscoverAPIs(facilitatorURL string, limit, offset int) (*DiscoveryResponse,
 		return nil, fmt.Errorf("facilitator returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	limited := io.LimitReader(resp.Body, int64(maxDiscoveryBody)+1)
-	data, err := io.ReadAll(limited)
+	data, truncated, err := readCapped(resp.Body, maxDiscoveryBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read discovery response: %w", err)
 	}
-	if len(data) > maxDiscoveryBody {
+	if truncated {
 		return nil, fmt.Errorf("discovery response exceeds %d bytes", maxDiscoveryBody)
 	}
 
@@ -73,14 +68,6 @@ func DiscoverAPIs(facilitatorURL string, limit, offset int) (*DiscoveryResponse,
 	}
 
 	return &dr, nil
-}
-
-// IsSolanaNetwork returns true if the network string identifies a Solana network.
-// Supports both short names ("solana") and CAIP-2 format ("solana:5eykt4U...").
-func IsSolanaNetwork(network string) bool {
-	net := strings.ToLower(network)
-	return net == "solana" || net == "solana-mainnet" || net == "solana-devnet" ||
-		strings.HasPrefix(net, "solana:")
 }
 
 // Solana clusters Botwallet pays on, and their CAIP-2 ids (genesis hash
@@ -107,14 +94,16 @@ func solanaCluster(network string) string {
 	return ""
 }
 
-// NormalizeSolanaNetwork converts CAIP-2 format (solana:5eykt4U...) to "solana"
-// for server-side compatibility, preserving devnet if specified.
+// NormalizeSolanaNetwork converts a network Botwallet pays on (see
+// IsPayableOption) to the name the server takes: "solana" for mainnet
+// (also as a CAIP-2 id), "solana-devnet" for devnet. Any other network is
+// returned unchanged.
 func NormalizeSolanaNetwork(network string) string {
-	if solanaCluster(network) == clusterDevnet {
-		return "solana-devnet"
-	}
-	if IsSolanaNetwork(network) {
+	switch solanaCluster(network) {
+	case clusterMainnet:
 		return "solana"
+	case clusterDevnet:
+		return "solana-devnet"
 	}
 	return network
 }
@@ -140,30 +129,32 @@ func MatchKeyword(items []DiscoveredResource, query string) []DiscoveredResource
 	q := strings.ToLower(query)
 	var result []DiscoveredResource
 	for _, item := range items {
-		if strings.Contains(strings.ToLower(item.Resource), q) {
+		if matchesKeyword(item, q) {
 			result = append(result, item)
-			continue
 		}
-		if desc, ok := item.Metadata["description"].(string); ok {
-			if strings.Contains(strings.ToLower(desc), q) {
-				result = append(result, item)
-				continue
-			}
-		}
-		// Check nested metadata.output.example keys
-		if out, ok := item.Metadata["output"].(map[string]interface{}); ok {
-			if ex, ok := out["example"].(map[string]interface{}); ok {
-				for k := range ex {
-					if strings.Contains(strings.ToLower(k), q) {
-						result = append(result, item)
-						goto next
-					}
+	}
+	return result
+}
+
+// matchesKeyword reports whether the lowercased query q is in item's URL,
+// its description or a key of its metadata.output.example.
+func matchesKeyword(item DiscoveredResource, q string) bool {
+	if strings.Contains(strings.ToLower(item.Resource), q) {
+		return true
+	}
+	if desc, ok := item.Metadata["description"].(string); ok && strings.Contains(strings.ToLower(desc), q) {
+		return true
+	}
+	if out, ok := item.Metadata["output"].(map[string]interface{}); ok {
+		if ex, ok := out["example"].(map[string]interface{}); ok {
+			for k := range ex {
+				if strings.Contains(strings.ToLower(k), q) {
+					return true
 				}
 			}
 		}
-	next:
 	}
-	return result
+	return false
 }
 
 // ResourceDescription extracts a human-readable description from a
@@ -209,7 +200,7 @@ func RawAmountToUSDC(raw string) float64 {
 	if err != nil {
 		return 0
 	}
-	return val / 1_000_000
+	return val / math.Pow10(solana.USDCDecimals)
 }
 
 // HasSolanaOption returns true if the resource accepts a payment Botwallet

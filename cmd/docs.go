@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -62,7 +63,7 @@ Only wallet info, wallet owner and wallet rename work before claiming.
     paylink list                               List all your paylinks
     paylink cancel <id>                        Cancel a pending paylink
 
-    Create flags: --desc (required), --item (repeatable), --expires, --revealOwner, --reference
+    Create flags: --desc (required), --item (repeatable), --expires, --reveal-owner, --reference
     Send flags: --to (required), --message (optional personal note)
 
     --item format (repeat for each line item, total auto-calculated):
@@ -79,11 +80,18 @@ Only wallet info, wallet owner and wallet rename work before claiming.
     x402 fetch confirm <fetch_id>              Step 2: Pay and retrieve data
 
     Fetch flags: --method, --body, --header (repeatable)
+    Confirm flags: --body, --header (repeatable), --method. The paid request
+      goes to the URL, with the method, the probe recorded, but its body and
+      headers are not kept: pass the probe's --body and --header again.
+      --method overrides the recorded method
     Discover flags: --bazaar, --limit (bazaar), --offset (bazaar), --all (bazaar), --facilitator
 
     Default discover shows curated, verified Solana APIs. Use --bazaar for the full catalog.
     Agents can probe multiple APIs ("window shopping") before paying.
     Guard rails apply: auto-approve, limits, budget, firewall.
+    Botwallet pays only APIs at a public HTTPS address. The probe follows up to
+    5 redirects; the paid request follows none. A request for payment from
+    another host than the one probed is refused: probe that URL directly.
 
 ### Fund Requests (botwallet fund ...)
     fund <amount> --reason "..."               Ask owner for funds
@@ -97,6 +105,7 @@ Only wallet info, wallet owner and wallet rename work before claiming.
 
 ### Approval Status (botwallet approval ...)
     approval status <approval_id>              Check status of a specific approval
+    approval list                              List pending approvals (same as 'approvals')
 
     Returns: pending, approved, rejected, or expired.
     Use this to poll after a payment, x402 fetch, or withdrawal needs approval.
@@ -113,9 +122,8 @@ Only wallet info, wallet owner and wallet rename work before claiming.
 
     'notifications' is an alias for 'events'.
 
-    Types: approval_resolved, deposit_received, payment_completed,
-           fund_requested, fund_request_funded, wallet_pledged, guardrails_updated,
-           x402_payment_completed, x402_payment_failed
+    Types:
+{{event types}}
 
 ### Utilities
     history                                    Transaction history (--type in/out/all)
@@ -230,7 +238,8 @@ Never pay again just because a confirm did not say "completed".
   transfer from this wallet into the recipient's associated (standard) USDC
   account, for the amount shown, plus at most the quoted fee (otherwise
   TRANSACTION_MISMATCH, nothing signed)
-- Full private key never exists anywhere
+- Signing never assembles the full private key; only the recovery tool
+  combines both shares, in the owner's browser, when recovering a wallet
 - API key stored in ~/.botwallet/config.json
 - Use 'wallet backup' to export S1 (two-step safety process)
 - Set BOTWALLET_HOME (absolute path) to keep these files in another folder.
@@ -268,6 +277,7 @@ Use this to understand all available commands and how to use them.`,
 	Example: `  botwallet docs              # Full documentation
   botwallet docs | less       # Page through docs (humans)
   botwallet docs --json       # Machine-readable format`,
+	Annotations: map[string]string{localFilesAnnotation: "none"},
 	Run: func(cmd *cobra.Command, args []string) {
 		jsonFormat, _ := cmd.Flags().GetBool("json")
 
@@ -276,12 +286,30 @@ Use this to understand all available commands and how to use them.`,
 			return
 		}
 
-		fmt.Print(cliDocs)
+		fmt.Print(docsText())
 	},
 }
 
 func init() {
 	docsCmd.Flags().Bool("json", false, "Output in JSON format for programmatic parsing")
+}
+
+// docsText is the output of 'botwallet docs': cliDocs with the event types.
+func docsText() string {
+	lines := make([]string, len(eventTypes))
+	for i, t := range eventTypes {
+		lines[i] = fmt.Sprintf("      %-24s %s", t.name, t.meaning)
+	}
+	return strings.Replace(cliDocs, "{{event types}}", strings.Join(lines, "\n"), 1)
+}
+
+// docsEventTypes is the event_types list of 'botwallet docs --json'.
+func docsEventTypes() []string {
+	types := make([]string, len(eventTypes))
+	for i, t := range eventTypes {
+		types[i] = t.name + " — " + t.meaning
+	}
+	return types
 }
 
 // getDocsJSON returns structured documentation as a map
@@ -432,8 +460,9 @@ func getDocsJSON() map[string]interface{} {
 					},
 					{
 						"name":        "fetch confirm",
-						"description": "Step 2: FROST sign payment and retrieve API data",
+						"description": "Step 2: FROST sign payment and retrieve API data. The paid request goes to the URL, with the method, the probe recorded; pass the probe's --body and --header again, they are not kept",
 						"args":        []string{"fetch_id"},
+						"flags":       []string{"--body (the probe's, again)", "--header (repeatable; the probe's, again)", "--method (overrides the recorded method)"},
 						"example":     "botwallet x402 fetch confirm abc12345-6789-...",
 					},
 					{
@@ -453,7 +482,7 @@ func getDocsJSON() map[string]interface{} {
 						"name":        "create",
 						"description": "Create a payment link to receive money",
 						"args":        []string{"amount (optional when using --item)"},
-						"flags":       []string{"--desc (required)", "--expires", "--item (repeatable: \"description, price[, qty]\")", "--revealOwner"},
+						"flags":       []string{"--desc (required)", "--expires", "--item (repeatable: \"description, price[, qty]\")", "--reveal-owner", "--reference"},
 						"example":     "botwallet paylink create --desc \"Research report\" --item \"Research, 25.00\"",
 						"item_format": "Each --item is \"description, price[, quantity]\". Quantity defaults to 1. Total auto-calculated from items.",
 					},
@@ -542,6 +571,11 @@ func getDocsJSON() map[string]interface{} {
 					"example":     "botwallet approval status abc123-def456",
 					"usage":       "Poll this after any action returns awaiting_approval. When status is 'approved', run the corresponding confirm command.",
 				},
+				{
+					"name":        "list",
+					"description": "View all pending owner approvals (same as 'approvals')",
+					"example":     "botwallet approval list",
+				},
 			},
 		},
 		"events": map[string]interface{}{
@@ -564,23 +598,14 @@ func getDocsJSON() map[string]interface{} {
 					"example":     "botwallet events --mark-read",
 				},
 			},
-			"event_types": []string{
-				"approval_resolved — human approved/rejected a payment or withdrawal",
-				"deposit_received — funds arrived in your wallet",
-				"payment_completed — a payment you made completed on-chain",
-				"fund_requested — you requested funds (confirmation)",
-				"fund_request_funded — human funded your request",
-				"wallet_pledged — wallet was pledged to an owner",
-				"guardrails_updated — spending limits changed",
-				"x402_payment_completed — x402 API payment settled successfully",
-				"x402_payment_failed — x402 API payment failed",
-			},
+			"event_types":          docsEventTypes(),
 			"recommended_workflow": "After any action requiring human approval, periodically check 'botwallet events' to see when the human responds. Mark events as read after processing them.",
 		},
 		"aliases": map[string]string{
 			"register":      "wallet create",
 			"notifications": "events",
 			"transactions":  "history",
+			"approval list": "approvals",
 		},
 		"utilities": []map[string]interface{}{
 			{
@@ -694,6 +719,6 @@ func getDocsJSON() map[string]interface{} {
 				"botwallet wallet balance --wallet my-wallet",
 			},
 		},
-		"documentation_url": "https://botwallet.co/docs/cli",
+		"documentation_url": "https://docs.botwallet.co/reference/cli/",
 	}
 }

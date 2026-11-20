@@ -16,12 +16,8 @@ import (
 	"time"
 )
 
-// Default configuration
-//
-// API URL can be overridden via:
-//   - --api-url flag
-//   - BOTWALLET_API_URL environment variable
-//   - ~/.botwallet/config.json base_url field
+// Default configuration. Which base URL a command uses is decided by
+// config.GetBaseURL.
 const (
 	DefaultBaseURL = "https://api.botwallet.co/v1"
 	DefaultTimeout = 30 * time.Second
@@ -44,23 +40,20 @@ func SetVersion(v string) {
 	clientVersion = v
 }
 
-// NewClient creates a new API client
-func NewClient(apiKey string) *Client {
+// New creates an API client for baseURL ("" means DefaultBaseURL). apiKey
+// may be "" for the calls that need no authentication.
+func New(apiKey, baseURL string) *Client {
+	if baseURL == "" {
+		baseURL = DefaultBaseURL
+	}
 	return &Client{
-		BaseURL: DefaultBaseURL,
+		BaseURL: baseURL,
 		APIKey:  apiKey,
 		Version: clientVersion,
 		HTTPClient: &http.Client{
 			Timeout: DefaultTimeout,
 		},
 	}
-}
-
-// NewClientWithURL creates a new API client with a custom base URL
-func NewClientWithURL(apiKey, baseURL string) *Client {
-	c := NewClient(apiKey)
-	c.BaseURL = baseURL
-	return c
 }
 
 // =============================================================================
@@ -77,6 +70,39 @@ type APIError struct {
 
 func (e *APIError) Error() string {
 	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
+}
+
+// params is a request body under construction. Its setters leave out empty
+// and zero values, which the server reads as "not given".
+type params map[string]interface{}
+
+// str sets key to v unless v is "".
+func (p params) str(key, v string) params {
+	if v != "" {
+		p[key] = v
+	}
+	return p
+}
+
+// posInt sets key to v if v is positive.
+func (p params) posInt(key string, v int) params {
+	if v > 0 {
+		p[key] = v
+	}
+	return p
+}
+
+// list sets key to v unless v is empty.
+func (p params) list(key string, v []string) params {
+	if len(v) > 0 {
+		p[key] = v
+	}
+	return p
+}
+
+// listParams is the status filter and paging of the list calls.
+func listParams(status string, limit, offset int) params {
+	return params{}.str("status", status).posInt("limit", limit).posInt("offset", offset)
 }
 
 // =============================================================================
@@ -194,15 +220,7 @@ func (c *Client) Ping() (map[string]interface{}, error) {
 // Returns the server's public key share (A2) and a session ID.
 // SECURITY: No secret material is sent or received — only public points.
 func (c *Client) DKGInit(name string, agentModel string, ownerEmail string, metadata map[string]interface{}) (map[string]interface{}, error) {
-	data := map[string]interface{}{
-		"name": name,
-	}
-	if agentModel != "" {
-		data["agent_model"] = agentModel
-	}
-	if ownerEmail != "" {
-		data["owner_email"] = ownerEmail
-	}
+	data := params{"name": name}.str("agent_model", agentModel).str("owner_email", ownerEmail)
 	if len(metadata) > 0 {
 		data["metadata"] = metadata
 	}
@@ -262,16 +280,7 @@ func (c *Client) CanIAfford(to string, amount float64) (map[string]interface{}, 
 
 // Pay sends a payment
 func (c *Client) Pay(to string, amount float64, note string, reference string, idempotencyKey string) (map[string]interface{}, error) {
-	data := map[string]interface{}{
-		"to":     to,
-		"amount": amount,
-	}
-	if note != "" {
-		data["note"] = note
-	}
-	if reference != "" {
-		data["reference"] = reference
-	}
+	data := params{"to": to, "amount": amount}.str("note", note).str("reference", reference)
 	return c.CallWithIdempotency("pay", data, idempotencyKey)
 }
 
@@ -290,67 +299,44 @@ type LineItem struct {
 	TotalCents     int64  `json:"total_cents"`
 }
 
+// PaymentRequest is a paylink to create. Amount, Description and
+// RevealOwner are always sent; the rest only when set.
+type PaymentRequest struct {
+	Amount      float64
+	Description string
+	Reference   string
+	ExpiresIn   string // e.g. "24h", "7d"
+	RevealOwner bool   // show the owner's email on the payment page
+	LineItems   []LineItem
+}
+
 // CreatePaymentRequest creates a new payment request
-func (c *Client) CreatePaymentRequest(amount float64, description string, reference string, expiresIn string, revealOwner bool, lineItems []LineItem) (map[string]interface{}, error) {
-	data := map[string]interface{}{
-		"amount":       amount,
-		"description":  description,
-		"reveal_owner": revealOwner,
-	}
-	if reference != "" {
-		data["reference"] = reference
-	}
-	if expiresIn != "" {
-		data["expires_in"] = expiresIn
-	}
-	if lineItems != nil && len(lineItems) > 0 {
-		data["line_items"] = lineItems
+func (c *Client) CreatePaymentRequest(r PaymentRequest) (map[string]interface{}, error) {
+	data := params{
+		"amount":       r.Amount,
+		"description":  r.Description,
+		"reveal_owner": r.RevealOwner,
+	}.str("reference", r.Reference).str("expires_in", r.ExpiresIn)
+	if len(r.LineItems) > 0 {
+		data["line_items"] = r.LineItems
 	}
 	return c.Call("create_payment_request", data)
 }
 
 // SendPaylinkInvitation sends a paylink to an email address or bot wallet
 func (c *Client) SendPaylinkInvitation(requestID, toEmail, toWallet, message string) (map[string]interface{}, error) {
-	data := map[string]interface{}{
-		"request_id": requestID,
-	}
-	if toEmail != "" {
-		data["to_email"] = toEmail
-	}
-	if toWallet != "" {
-		data["to_wallet"] = toWallet
-	}
-	if message != "" {
-		data["message"] = message
-	}
+	data := params{"request_id": requestID}.str("to_email", toEmail).str("to_wallet", toWallet).str("message", message)
 	return c.Call("send_paylink_invitation", data)
 }
 
 // GetPaymentRequest gets a payment request by ID or reference
 func (c *Client) GetPaymentRequest(requestID string, reference string) (map[string]interface{}, error) {
-	data := map[string]interface{}{}
-	if requestID != "" {
-		data["request_id"] = requestID
-	}
-	if reference != "" {
-		data["reference"] = reference
-	}
-	return c.Call("get_payment_request", data)
+	return c.Call("get_payment_request", params{}.str("request_id", requestID).str("reference", reference))
 }
 
 // ListPaymentRequests lists payment requests
 func (c *Client) ListPaymentRequests(status string, limit int, offset int) (map[string]interface{}, error) {
-	data := map[string]interface{}{}
-	if status != "" {
-		data["status"] = status
-	}
-	if limit > 0 {
-		data["limit"] = limit
-	}
-	if offset > 0 {
-		data["offset"] = offset
-	}
-	return c.Call("list_payment_requests", data)
+	return c.Call("list_payment_requests", listParams(status, limit, offset))
 }
 
 // CancelPaymentRequest cancels a payment request
@@ -375,17 +361,7 @@ func (c *Client) RequestFunds(amount float64, reason string) (map[string]interfa
 
 // ListFundRequests lists fund requests
 func (c *Client) ListFundRequests(status string, limit int, offset int) (map[string]interface{}, error) {
-	data := map[string]interface{}{}
-	if status != "" {
-		data["status"] = status
-	}
-	if limit > 0 {
-		data["limit"] = limit
-	}
-	if offset > 0 {
-		data["offset"] = offset
-	}
-	return c.Call("list_fund_requests", data)
+	return c.Call("list_fund_requests", listParams(status, limit, offset))
 }
 
 // Withdraw withdraws funds to a Solana address
@@ -411,19 +387,10 @@ func (c *Client) GetWithdrawal(withdrawalID string) (map[string]interface{}, err
 	})
 }
 
-// Transactions gets transaction history
+// Transactions gets transaction history. txType is "in", "out", or "" for
+// every transaction.
 func (c *Client) Transactions(txType string, limit int, offset int) (map[string]interface{}, error) {
-	data := map[string]interface{}{}
-	if txType != "" && txType != "all" {
-		data["type"] = txType
-	}
-	if limit > 0 {
-		data["limit"] = limit
-	}
-	if offset > 0 {
-		data["offset"] = offset
-	}
-	return c.Call("transactions", data)
+	return c.Call("transactions", listParams("", limit, offset).str("type", txType))
 }
 
 // MyLimits gets spending limits
@@ -465,18 +432,7 @@ func (c *Client) FrostSignComplete(sessionID string, partialSig string) (map[str
 
 // Events fetches recent wallet events/notifications
 func (c *Client) Events(types []string, limit int, unreadOnly bool, since string) (map[string]interface{}, error) {
-	data := map[string]interface{}{
-		"unread_only": unreadOnly,
-	}
-	if len(types) > 0 {
-		data["types"] = types
-	}
-	if limit > 0 {
-		data["limit"] = limit
-	}
-	if since != "" {
-		data["since"] = since
-	}
+	data := params{"unread_only": unreadOnly}.list("types", types).posInt("limit", limit).str("since", since)
 	return c.Call("events", data)
 }
 
@@ -507,20 +463,7 @@ func (c *Client) CancelPayment(transactionID string) (map[string]interface{}, er
 
 // ListPayments lists payment transactions
 func (c *Client) ListPayments(transactionID string, status string, limit int, offset int) (map[string]interface{}, error) {
-	data := map[string]interface{}{}
-	if transactionID != "" {
-		data["transaction_id"] = transactionID
-	}
-	if status != "" {
-		data["status"] = status
-	}
-	if limit > 0 {
-		data["limit"] = limit
-	}
-	if offset > 0 {
-		data["offset"] = offset
-	}
-	return c.Call("list_payments", data)
+	return c.Call("list_payments", listParams(status, limit, offset).str("transaction_id", transactionID))
 }
 
 // ExportWallet requests an export encryption key from the server.
@@ -564,24 +507,30 @@ func (c *Client) ImportWalletKey(exportID string) (encryptionKeyB64 string, err 
 // x402 API Methods
 // =============================================================================
 
+// X402PrepareRequest is the payment option of a probed x402 API. URL,
+// PayTo, Amount, Network and Method are always sent.
+type X402PrepareRequest struct {
+	URL     string
+	PayTo   string
+	Amount  string // in base units of Asset
+	Network string
+	Method  string
+	// Asset (the token mint) and Scheme come from the API's payment
+	// option; servers that do not know them ignore them.
+	Asset  string
+	Scheme string
+}
+
 // X402Prepare creates an x402 payment intent (Step 1 server call).
 // Checks guard rails, balance, and creates a transaction record.
-// asset (the token mint) and scheme come from the API's payment option;
-// servers that do not know them ignore them.
-func (c *Client) X402Prepare(url, payTo, amount, network, method, asset, scheme string) (map[string]interface{}, error) {
-	data := map[string]interface{}{
-		"url":     url,
-		"pay_to":  payTo,
-		"amount":  amount,
-		"network": network,
-		"method":  method,
-	}
-	if asset != "" {
-		data["asset"] = asset
-	}
-	if scheme != "" {
-		data["scheme"] = scheme
-	}
+func (c *Client) X402Prepare(r X402PrepareRequest) (map[string]interface{}, error) {
+	data := params{
+		"url":     r.URL,
+		"pay_to":  r.PayTo,
+		"amount":  r.Amount,
+		"network": r.Network,
+		"method":  r.Method,
+	}.str("asset", r.Asset).str("scheme", r.Scheme)
 	return c.Call("x402_prepare", data)
 }
 
@@ -608,13 +557,10 @@ func (c *Client) X402SignComplete(sessionID string, partialSig string) (map[stri
 // Called after the CLI retries the API with payment. Updates the transaction
 // status to completed or failed.
 func (c *Client) X402Settle(fetchID string, apiSuccess bool, responseStatus int, errorMessage string) (map[string]interface{}, error) {
-	data := map[string]interface{}{
+	data := params{
 		"fetch_id":        fetchID,
 		"success":         apiSuccess,
 		"response_status": responseStatus,
-	}
-	if errorMessage != "" {
-		data["error_message"] = errorMessage
-	}
+	}.str("error_message", errorMessage)
 	return c.Call("x402_settle", data)
 }

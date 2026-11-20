@@ -11,7 +11,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -30,12 +29,11 @@ func Parse402Response(resp *http.Response) (*PaymentRequired, error) {
 	const max402Body = 1024 * 1024
 
 	// Try body first (v1 style)
-	limited := io.LimitReader(resp.Body, int64(max402Body)+1)
-	body, err := io.ReadAll(limited)
+	body, truncated, err := readCapped(resp.Body, max402Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read 402 body: %w", err)
 	}
-	if len(body) > max402Body {
+	if truncated {
 		return nil, fmt.Errorf("402 response body exceeds 1 MB — likely not a valid x402 response")
 	}
 
@@ -130,7 +128,7 @@ func ToSummary(opt *PaymentOption) PaymentSummary {
 		Network:     opt.Network,
 		Scheme:      opt.Scheme,
 		Asset:       opt.Asset,
-		PriceUSDC:   opt.GetAmount(),
+		Amount:      opt.GetAmount(),
 		PayTo:       opt.PayTo,
 		Description: opt.Description,
 	}

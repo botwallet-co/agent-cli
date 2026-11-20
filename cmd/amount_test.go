@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -82,13 +81,13 @@ func TestParseItemInCents(t *testing.T) {
 		{"Consulting, 12.5", "Consulting", 1, 1250, 1250},
 	}
 	for _, c := range cases {
-		item, err := ParseItem(c.raw)
+		item, err := parseItem(c.raw)
 		if err != nil {
-			t.Errorf("ParseItem(%q): %v", c.raw, err)
+			t.Errorf("parseItem(%q): %v", c.raw, err)
 			continue
 		}
 		if item.Description != c.desc || item.Quantity != c.qty || item.UnitPriceCents != c.unitCents || item.TotalCents != c.total {
-			t.Errorf("ParseItem(%q) = %+v", c.raw, item)
+			t.Errorf("parseItem(%q) = %+v", c.raw, item)
 		}
 	}
 
@@ -102,8 +101,8 @@ func TestParseItemInCents(t *testing.T) {
 		"Odd, 1e3":                           "cannot parse price",
 		"Lots, 1000.00, 9223372036854775807": "too large",
 	} {
-		if _, err := ParseItem(raw); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("ParseItem(%q) error = %v, want one saying %q", raw, err, want)
+		if _, err := parseItem(raw); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("parseItem(%q) error = %v, want one saying %q", raw, err, want)
 		}
 	}
 }
@@ -114,14 +113,14 @@ func TestParseItemsTotalsInCents(t *testing.T) {
 	for i := range items {
 		items[i] = "Call, 0.10"
 	}
-	_, total, err := ParseItems(items)
+	_, total, err := parseItems(items)
 	if err != nil || total != 100 {
-		t.Fatalf("ParseItems total = %d, %v; want 100", total, err)
+		t.Fatalf("parseItems total = %d, %v; want 100", total, err)
 	}
 
-	_, _, err = ParseItems([]string{"Big, 9999999999999.99", "Big, 9999999999999.99"})
+	_, _, err = parseItems([]string{"Big, 9999999999999.99", "Big, 9999999999999.99"})
 	if err == nil || !strings.Contains(err.Error(), "too large") {
-		t.Errorf("ParseItems over the limit: error = %v", err)
+		t.Errorf("parseItems over the limit: error = %v", err)
 	}
 }
 
@@ -130,12 +129,7 @@ func TestParseItemsTotalsInCents(t *testing.T) {
 func TestAmountArgumentsAreCheckedBeforeTheServer(t *testing.T) {
 	home := t.TempDir()
 	addTestWallet(t, home, "main")
-	var mu sync.Mutex
-	var sent []interface{}
 	api := newFakeAPI(t, func(action string, req map[string]interface{}) (int, interface{}) {
-		mu.Lock()
-		sent = append(sent, req["amount"])
-		mu.Unlock()
 		return apiOK(map[string]interface{}{"transaction_id": "tx", "status": "pending"})
 	})
 	addr := testAddress("dest").String()
@@ -169,9 +163,7 @@ func TestAmountArgumentsAreCheckedBeforeTheServer(t *testing.T) {
 	if run.exitCode != 0 {
 		t.Fatalf("pay 0.29: exit %d\n%s", run.exitCode, run.stdout)
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(sent) != 1 || sent[0] != 0.29 {
-		t.Errorf("pay 0.29 sent amount %v, want 0.29", sent)
+	if pays := api.requests("pay"); len(pays) != 1 || pays[0]["amount"] != 0.29 {
+		t.Errorf("pay 0.29 sent %v, want amount 0.29", pays)
 	}
 }

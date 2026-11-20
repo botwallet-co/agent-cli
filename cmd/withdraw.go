@@ -1,15 +1,12 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-	"strconv"
 	"strings"
 
-	solanago "github.com/gagliardetto/solana-go"
 	"github.com/spf13/cobra"
 
 	"github.com/botwallet-co/agent-cli/output"
+	"github.com/botwallet-co/agent-cli/solana"
 )
 
 var withdrawIdempotencyKey string
@@ -46,13 +43,11 @@ Subcommands:
 
 func runWithdrawDefault(cmd *cobra.Command, args []string) {
 	if len(args) < 2 {
-		cmd.Help()
+		_ = cmd.Help()
 		return
 	}
 
-	if !requireAPIKey() {
-		return
-	}
+	client := authedClient()
 
 	amountCents, ok := parseAmountArg(args[0], "50.00")
 	if !ok {
@@ -61,17 +56,15 @@ func runWithdrawDefault(cmd *cobra.Command, args []string) {
 
 	toAddress := args[1]
 
-	if !isValidSolanaAddress(toAddress) {
-		output.ValidationError("Invalid Solana address format", invalidAddressHowToFix)
+	if !solana.IsValidAddress(toAddress) {
+		exitValidationError("Invalid Solana address format", invalidAddressHowToFix)
 		return
 	}
 
 	if strings.TrimSpace(withdrawReason) == "" {
-		output.ValidationError("--reason is required for withdrawals", "Example: botwallet withdraw 50.00 <address> --reason \"Pay hosting\"")
+		exitValidationError("--reason is required for withdrawals", "Example: botwallet withdraw 50.00 <address> --reason \"Pay hosting\"")
 		return
 	}
-
-	client := getClient()
 
 	result, err := client.Withdraw(centsToDollars(amountCents), toAddress, withdrawReason, withdrawIdempotencyKey)
 	if err != nil {
@@ -86,28 +79,7 @@ func init() {
 	withdrawCmd.Flags().StringVar(&withdrawIdempotencyKey, "idempotency-key", "", "Idempotency key to prevent duplicate withdrawals")
 	withdrawCmd.Flags().StringVar(&withdrawReason, "reason", "", "Reason for the withdrawal (required)")
 
-	withdrawCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		msg := err.Error()
-		if strings.Contains(msg, "unknown shorthand flag") {
-			if idx := strings.Index(msg, " in "); idx >= 0 {
-				value := strings.TrimSpace(msg[idx+4:])
-				if _, parseErr := strconv.ParseFloat(value, 64); parseErr == nil {
-					for _, arg := range os.Args {
-						if arg == "--human" {
-							output.SetHumanOutput(true)
-							break
-						}
-					}
-					output.ValidationError(
-						"Amount must be a positive number",
-						"Got '"+value+"'. Use a positive number, e.g., botwallet withdraw 50.00 <address> --reason \"...\"",
-					)
-					return nil
-				}
-			}
-		}
-		return err
-	})
+	withdrawCmd.SetFlagErrorFunc(negativeAmountFlagError("botwallet withdraw 50.00 <address> --reason \"...\""))
 }
 
 var withdrawConfirmCmd = &cobra.Command{
@@ -131,22 +103,18 @@ Withdrawals expire after 48 hours.`,
   botwallet withdraw confirm <withdrawal_id>          # Step 2`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		wallet, client := authedWallet()
 
 		withdrawalID := args[0]
 		target := withdrawalTarget(withdrawalID)
 
 		// Load Key 1 first: if it is missing or belongs to another wallet,
 		// stop before the server starts processing the withdrawal.
-		signer, err := loadSigningWallet()
+		signer, err := loadSigningWallet(wallet)
 		if err != nil {
 			exitSigningError(err, target)
 			return
 		}
-
-		client := getClient()
 
 		if output.IsHumanOutput() {
 			output.InfoMsg("Retrieving withdrawal %s...", withdrawalID)
@@ -160,38 +128,14 @@ Withdrawals expire after 48 hours.`,
 
 		messageB64, _ := confirmResult["message"].(string)
 		if messageB64 == "" {
-			output.APIError("SIGNING_ERROR", "Server did not return a message to sign",
+			exitError("SIGNING_ERROR", "Server did not return a message to sign",
 				"The withdrawal may have expired or not yet been approved. Check with 'botwallet withdraw get'", nil)
 			return
 		}
 
-		if output.IsHumanOutput() {
-			toAddr, _ := confirmResult["to_address"].(string)
-			amount, _ := confirmResult["amount_usdc"].(float64)
-			fee, _ := confirmResult["fee_usdc"].(float64)
-			total, _ := confirmResult["total_usdc"].(float64)
-			network, _ := confirmResult["network"].(string)
+		output.WithdrawalConfirmSummary(confirmResult)
 
-			addrDisplay := toAddr
-			if len(addrDisplay) > 16 {
-				addrDisplay = addrDisplay[:8] + "..." + addrDisplay[len(addrDisplay)-8:]
-			}
-
-			feeLine := fmt.Sprintf("$%.2f USDC", fee)
-			if bd, ok := confirmResult["fee_breakdown"].(map[string]interface{}); ok {
-				if sf, ok := bd["account_setup_fee_usdc"].(float64); ok && sf > 0 {
-					feeLine += fmt.Sprintf(" (incl. $%.2f account setup)", sf)
-				}
-			}
-			summary := fmt.Sprintf("To:     %s\nAmount: $%.2f USDC\nFee:    %s\nTotal:  $%.2f USDC", addrDisplay, amount, feeLine, total)
-			if network != "" {
-				summary += fmt.Sprintf("\nNetwork: %s", network)
-			}
-			output.Box("Confirm Withdrawal", summary)
-			fmt.Println()
-		}
-
-		intent, err := paymentIntent(confirmResult)
+		intent, err := exactTransferIntent(confirmResult)
 		if err != nil {
 			exitSigningError(err, target)
 			return
@@ -221,12 +165,9 @@ Shows whether the withdrawal is:
 	Example: `  botwallet withdraw get <withdrawal_id>`,
 	Args:    cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if !requireAPIKey() {
-			return
-		}
+		client := authedClient()
 
 		withdrawalID := args[0]
-		client := getClient()
 
 		result, err := client.GetWithdrawal(withdrawalID)
 		if err != nil {
@@ -234,118 +175,12 @@ Shows whether the withdrawal is:
 			return
 		}
 
-		if !output.IsHumanOutput() {
-			output.JSON(result)
-			return
-		}
-
-		status, _ := result["status"].(string)
-		wID, _ := result["withdrawal_id"].(string)
-		amount, _ := result["amount_usdc"].(float64)
-		youReceived, _ := result["you_receive_usdc"].(float64)
-		toAddress, _ := result["to_address"].(string)
-		createdAt, _ := result["created_at"].(string)
-
-		output.Section("Withdrawal Status")
-		output.KeyValue("Withdrawal ID", wID)
-		output.KeyValue("Status", formatWithdrawStatus(status))
-		output.KeyValueMoney("Amount", amount)
-		output.WithdrawalFeeLines(result, "network_fee_usdc")
-		output.KeyValueMoney("You Received", youReceived)
-		output.KeyValue("To Address", toAddress)
-		output.KeyValue("Created", createdAt)
-
-		switch status {
-		case "completed":
-			output.Section("Blockchain Details")
-			if completedAt, ok := result["completed_at"].(string); ok {
-				output.KeyValue("Completed", completedAt)
-			}
-			if solanaTx, ok := result["solana_tx"].(string); ok {
-				output.KeyValueHighlight("Solana TX", solanaTx)
-				output.Tip("View on Solscan: https://solscan.io/tx/%s", solanaTx)
-			}
-		case "approved":
-			fmt.Println()
-			output.SuccessMsg("Owner approved! Ready to execute.")
-			fmt.Println()
-			output.Section("Next Step")
-			output.InfoMsg("Run to execute:")
-			fmt.Printf("  botwallet withdraw confirm %s\n", wID)
-		case "awaiting_approval":
-			fmt.Println()
-			output.WarningMsg("Waiting for owner approval.")
-			if approvalURL, ok := result["approval_url"].(string); ok {
-				output.KeyValueURL("Approval URL", approvalURL)
-			}
-			output.Tip("After approval: botwallet withdraw confirm %s", wID)
-		case "pending":
-			output.InfoMsg("FROST signing in progress...")
-		case "failed":
-			output.ErrorMsg("Withdrawal failed.")
-			if reason, ok := result["failure_reason"].(string); ok {
-				output.KeyValue("Reason", reason)
-			}
-		case "denied":
-			output.ErrorMsg("Withdrawal denied by owner.")
-		case "expired":
-			output.WarningMsg("Withdrawal expired. Create a new request.")
-		}
+		output.FormatWithdrawal(result)
 	},
 }
 
 // invalidAddressHowToFix explains what a valid address looks like.
 const invalidAddressHowToFix = "A Solana address is 32-44 base58 characters (no 0, O, I or l) that decode to 32 bytes. Use the recipient's wallet address, not a token account address"
-
-// looksLikeSolanaAddress reports whether s has the length and characters of
-// a Solana address. The server treats such a recipient as an address, not
-// a username.
-func looksLikeSolanaAddress(s string) bool {
-	if len(s) < 32 || len(s) > 44 {
-		return false
-	}
-	const base58Chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-	for _, c := range s {
-		if !strings.ContainsRune(base58Chars, c) {
-			return false
-		}
-	}
-	return true
-}
-
-// isValidSolanaAddress reports whether addr looks like a Solana address and
-// decodes to exactly 32 bytes. Addresses off the ed25519 curve are allowed:
-// program-owned vaults (multisigs, escrows) are valid destinations. Telling
-// a token account from a wallet takes a Solana lookup, so that check is the
-// server's.
-func isValidSolanaAddress(addr string) bool {
-	if !looksLikeSolanaAddress(addr) {
-		return false
-	}
-	_, err := solanago.PublicKeyFromBase58(addr)
-	return err == nil
-}
-
-func formatWithdrawStatus(status string) string {
-	switch status {
-	case "awaiting_approval":
-		return "AWAITING APPROVAL"
-	case "approved":
-		return "APPROVED ✓"
-	case "pending":
-		return "SIGNING..."
-	case "completed":
-		return "COMPLETED ✓"
-	case "failed":
-		return "FAILED ✗"
-	case "denied":
-		return "DENIED ✗"
-	case "expired":
-		return "EXPIRED"
-	default:
-		return status
-	}
-}
 
 func init() {
 	withdrawCmd.AddCommand(withdrawConfirmCmd)
