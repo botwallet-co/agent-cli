@@ -214,6 +214,7 @@
   "claim_code": "ABC123",
   "claim_expires_at": "2026-10-03T11:30:00Z",
   "claim_url": "https://app.botwallet.co/claim/abc",
+  "key_safety": "Key 1 of this wallet is stored only on this machine. If this machine is temporary or is reset between tasks, tell your human now. Remind them to save their backup keys in the Botwallet dashboard before they add money: both keys are needed to withdraw, and they are the only way back if this machine is reset.",
   "next_step": {
     "action": "Share the claim_url and claim_code with your human now and tell them the code expires in 48 hours. Explain in plain words: this is a spending account they will own; after claiming they can set how much you may spend without asking, add money, and withdraw any time. Don't make payments until they've claimed it and set an allowance.",
     "claim_code": "ABC123",
@@ -250,6 +251,12 @@
   much you may spend without asking, add money, and withdraw any time.
   Don't make payments until they've claimed it and set an allowance.
 
+⚠️  Key 1 of this wallet is stored only on this machine. If this machine is
+  temporary or is reset between tasks, tell your human now. Remind them to
+  save their backup keys in the Botwallet dashboard before they add money:
+  both keys are needed to withdraw, and they are the only way back if this
+  machine is reset.
+
 ℹ️  After they claim it, thank them. You can offer to show what you can do,
   e.g. a small sample payment link ('botwallet paylink create') they can
   try, but never pressure them to pay you.
@@ -259,6 +266,7 @@
 {
   "claim_code": "ABC123",
   "claim_url": "https://app.botwallet.co/claim/abc",
+  "key_safety": "Key 1 of this wallet is stored only on this machine. If this machine is temporary or is reset between tasks, tell your human now. Remind them to save their backup keys in the Botwallet dashboard before they add money: both keys are needed to withdraw, and they are the only way back if this machine is reset.",
   "next_step": {
     "action": "Share the claim_url and claim_code with your human now and tell them the code expires in 48 hours. Explain in plain words: this is a spending account they will own; after claiming they can set how much you may spend without asking, add money, and withdraw any time. Don't make payments until they've claimed it and set an allowance.",
     "claim_code": "ABC123",
@@ -293,6 +301,12 @@
   is a spending account they will own. After claiming, they can set how
   much you may spend without asking, add money, and withdraw any time.
   Don't make payments until they've claimed it and set an allowance.
+
+⚠️  Key 1 of this wallet is stored only on this machine. If this machine is
+  temporary or is reset between tasks, tell your human now. Remind them to
+  save their backup keys in the Botwallet dashboard before they add money:
+  both keys are needed to withdraw, and they are the only way back if this
+  machine is reset.
 
 ℹ️  After they claim it, thank them. You can offer to show what you can do,
   e.g. a small sample payment link ('botwallet paylink create') they can

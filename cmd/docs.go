@@ -142,7 +142,7 @@ Only wallet info, wallet owner and wallet rename work before claiming.
 
 ### Setup
     botwallet register --name "Orion's Wallet" --owner human@example.com
-    # Output includes claim_url, claim_code, and on_claimed instructions.
+    # Output includes claim_url, claim_code, and key_safety and on_claimed instructions.
 
     # Optional: add metadata to help your human identify this wallet later
     botwallet register --name "Orion's Wallet" --owner human@example.com \

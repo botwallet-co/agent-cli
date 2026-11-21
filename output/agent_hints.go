@@ -6,7 +6,7 @@ import "fmt"
 // Agent-Facing JSON Fields
 // =============================================================================
 // What the JSON output adds to the API result for agents: next steps,
-// ready_to_confirm, agent_hint, action_required and send_to_email.
+// key_safety, ready_to_confirm, agent_hint, action_required and send_to_email.
 // SKILL.md and 'botwallet docs' tell agents to follow these fields, so
 // their names and meaning are part of the CLI's contract. Each function
 // returns a new map; the API result is left as it was.
@@ -17,6 +17,14 @@ import "fmt"
 const registerNextStep = "Share the claim_url and claim_code with your human now and tell them the code expires in 48 hours. " +
 	"Explain in plain words: this is a spending account they will own; after claiming they can set how much you may spend without asking, add money, and withdraw any time. " +
 	"Don't make payments until they've claimed it and set an allowance."
+
+// registerKeySafety is what the agent must pass on about the keys right after
+// registering, before any money is added. The setup prompt on botwallet.co
+// and in the dashboard relies on the CLI saying this.
+const registerKeySafety = "Key 1 of this wallet is stored only on this machine. " +
+	"If this machine is temporary or is reset between tasks, tell your human now. " +
+	"Remind them to save their backup keys in the Botwallet dashboard before they add money: " +
+	"both keys are needed to withdraw, and they are the only way back if this machine is reset."
 
 // registerOnClaimed is what the agent may do once the human has claimed the
 // wallet. A sample payment link is only an offer, never a request for money.
@@ -64,6 +72,7 @@ func registerForAgent(data map[string]interface{}) map[string]interface{} {
 			"claim_url":  data["claim_url"],
 			"claim_code": data["claim_code"],
 		},
+		"key_safety": registerKeySafety,
 		"on_claimed": registerOnClaimed,
 	}
 
